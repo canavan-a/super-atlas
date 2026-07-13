@@ -1,0 +1,9 @@
+# SQLite database and its WAL/journal files
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+
+# local env files
+.env
+.env.*
