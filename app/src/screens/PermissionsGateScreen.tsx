@@ -2,10 +2,10 @@ import { Pressable, Text, View } from 'react-native';
 import { PermissionsState } from '../location/usePermissionsGate';
 import { colors } from '../theme/colors';
 
-// Blocks all app usage until location (foreground + background) and
-// notification permissions are granted, per project requirement. Explains
-// *why* before triggering the OS prompt, which both Apple and Google expect
-// for background location and improves grant rates.
+// Blocks all app usage until location (foreground + background) permissions
+// are granted, per project requirement. Explains *why* before triggering the
+// OS prompt, which both Apple and Google expect for background location and
+// improves grant rates.
 export default function PermissionsGateScreen({ permissions }: { permissions: PermissionsState }) {
   const items: { label: string; granted: boolean; detail: string }[] = [
     {
@@ -17,11 +17,6 @@ export default function PermissionsGateScreen({ permissions }: { permissions: Pe
       label: 'Background location',
       granted: permissions.backgroundLocationGranted,
       detail: 'So your location keeps updating occasionally when the app is closed.',
-    },
-    {
-      label: 'Notifications',
-      granted: permissions.notificationsGranted,
-      detail: 'So you know when a friend request or update comes in.',
     },
   ];
 

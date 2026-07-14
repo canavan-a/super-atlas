@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -16,6 +18,9 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
+	// .env is optional; real deployments set env vars directly.
+	_ = godotenv.Load()
+
 	dbPath := os.Getenv("DATABASE_PATH")
 	if dbPath == "" {
 		dbPath = "open-location.db"

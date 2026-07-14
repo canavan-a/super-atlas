@@ -1,14 +1,12 @@
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import { useCallback, useEffect, useState } from 'react';
 import { registerBackgroundLocationTask } from './backgroundTask';
 
 export type PermissionsState = {
   loading: boolean;
-  // All three are required before the app proceeds past onboarding.
+  // Both are required before the app proceeds past onboarding.
   foregroundLocationGranted: boolean;
   backgroundLocationGranted: boolean;
-  notificationsGranted: boolean;
   allGranted: boolean;
   requestAll: () => Promise<void>;
 };
@@ -17,17 +15,14 @@ export function usePermissionsGate(): PermissionsState {
   const [loading, setLoading] = useState(true);
   const [foregroundLocationGranted, setForegroundLocationGranted] = useState(false);
   const [backgroundLocationGranted, setBackgroundLocationGranted] = useState(false);
-  const [notificationsGranted, setNotificationsGranted] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [fg, bg, notif] = await Promise.all([
+    const [fg, bg] = await Promise.all([
       Location.getForegroundPermissionsAsync(),
       Location.getBackgroundPermissionsAsync(),
-      Notifications.getPermissionsAsync(),
     ]);
     setForegroundLocationGranted(fg.status === Location.PermissionStatus.GRANTED);
     setBackgroundLocationGranted(bg.status === Location.PermissionStatus.GRANTED);
-    setNotificationsGranted(notif.status === Notifications.PermissionStatus.GRANTED);
     setLoading(false);
   }, []);
 
@@ -45,7 +40,6 @@ export function usePermissionsGate(): PermissionsState {
         await registerBackgroundLocationTask();
       }
     }
-    await Notifications.requestPermissionsAsync();
     await refresh();
   }, [refresh]);
 
@@ -53,8 +47,7 @@ export function usePermissionsGate(): PermissionsState {
     loading,
     foregroundLocationGranted,
     backgroundLocationGranted,
-    notificationsGranted,
-    allGranted: foregroundLocationGranted && backgroundLocationGranted && notificationsGranted,
+    allGranted: foregroundLocationGranted && backgroundLocationGranted,
     requestAll,
   };
 }

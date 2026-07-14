@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "app",
+    "name": "Open Location",
     "slug": "open-location",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -16,7 +16,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.open_location"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -24,7 +25,16 @@
     "plugins": [
       "expo-secure-store",
       "expo-background-task",
-      "@maplibre/maplibre-react-native"
+      "@maplibre/maplibre-react-native",
+      "expo-status-bar",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location so friends can see where you are.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
