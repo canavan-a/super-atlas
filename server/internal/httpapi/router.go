@@ -42,6 +42,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Route("/friends", func(r chi.Router) {
 			r.Get("/", d.FriendHandlers.List)
 			r.Post("/", d.FriendHandlers.SendRequest)
+			r.Get("/name/{userId}", d.FriendHandlers.GetName)
 			r.Post("/{id}/accept", d.FriendHandlers.Accept)
 			r.Delete("/{id}", d.FriendHandlers.Remove)
 			r.Put("/{id}/sharing", d.FriendHandlers.SetSharing)

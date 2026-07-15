@@ -1,5 +1,5 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissionsGate } from '../location/usePermissionsGate';
 import FriendsScreen from '../screens/FriendsScreen';
@@ -12,7 +12,7 @@ import { colors } from '../theme/colors';
 const Stack = createNativeStackNavigator();
 
 export default function RootNavigator() {
-  const { status } = useAuth();
+  const { status, logout } = useAuth();
   const permissions = usePermissionsGate();
 
   if (status === 'loading' || permissions.loading) {
@@ -49,8 +49,29 @@ export default function RootNavigator() {
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Map" component={MapScreen} />
-      <Stack.Screen name="Friends" component={FriendsScreen} />
+      <Stack.Screen
+        name="Map"
+        component={MapScreen}
+        options={({ navigation }) => ({
+          title: 'Open Location',
+          headerRight: () => (
+            <Pressable onPress={() => navigation.navigate('Friends')} hitSlop={8}>
+              <Text style={{ color: colors.accent, fontWeight: '600' }}>Friends</Text>
+            </Pressable>
+          ),
+        })}
+      />
+      <Stack.Screen
+        name="Friends"
+        component={FriendsScreen}
+        options={{
+          headerRight: () => (
+            <Pressable onPress={() => logout()} hitSlop={8}>
+              <Text style={{ color: colors.danger, fontWeight: '600' }}>Sign out</Text>
+            </Pressable>
+          ),
+        }}
+      />
     </Stack.Navigator>
   );
 }

@@ -85,3 +85,19 @@ func (s *Service) SetSharing(ctx context.Context, friendshipID, userID string, s
 func (s *Service) List(ctx context.Context, userID string) ([]FriendView, error) {
 	return s.store.ListForUser(ctx, userID)
 }
+
+// GetDisplayName returns otherID's display name, but only if userID is
+// otherID (looking up their own name) or the two are accepted friends.
+func (s *Service) GetDisplayName(ctx context.Context, userID, otherID string) (string, error) {
+	if userID == otherID {
+		u, err := s.authStore.GetUserByID(ctx, otherID)
+		if err != nil {
+			if errors.Is(err, auth.ErrNotFound) {
+				return "", ErrNotFound
+			}
+			return "", err
+		}
+		return u.DisplayName, nil
+	}
+	return s.store.AcceptedFriendDisplayName(ctx, userID, otherID)
+}

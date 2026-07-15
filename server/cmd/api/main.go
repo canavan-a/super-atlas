@@ -10,6 +10,7 @@ import (
 	"github.com/canavan-a/open-location/server/internal/db"
 	"github.com/canavan-a/open-location/server/internal/friends"
 	"github.com/canavan-a/open-location/server/internal/httpapi"
+	"github.com/canavan-a/open-location/server/internal/larp"
 	"github.com/canavan-a/open-location/server/internal/location"
 )
 
@@ -36,12 +37,16 @@ func main() {
 
 	friendStore := friends.NewStore(conn)
 	friendService := friends.NewService(friendStore, authStore)
-	friendHandlers := friends.NewHandlers(friendService)
 
 	hub := location.NewHub()
 	locationStore := location.NewStore(conn)
 	locationService := location.NewService(locationStore, friendStore, hub)
 	locationHandlers := location.NewHandlers(locationService, hub)
+
+	larpStore := larp.NewStore(conn)
+	larpService := larp.NewService(larpStore, authStore, friendStore, locationStore, locationService)
+
+	friendHandlers := friends.NewHandlers(friendService, larpService)
 
 	router := httpapi.NewRouter(httpapi.Deps{
 		AuthService:      authService,

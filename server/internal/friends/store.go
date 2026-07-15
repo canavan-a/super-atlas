@@ -157,6 +157,27 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 	return views, rows.Err()
 }
 
+// AcceptedFriendDisplayName returns the display name of otherID, but only if
+// userID and otherID have an accepted friendship.
+func (s *Store) AcceptedFriendDisplayName(ctx context.Context, userID, otherID string) (string, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT u.display_name
+		FROM friendships f
+		JOIN users u ON u.id = ?
+		WHERE f.status = 'accepted'
+		  AND ((f.requester_id = ? AND f.addressee_id = ?) OR (f.requester_id = ? AND f.addressee_id = ?))
+	`, otherID, userID, otherID, otherID, userID)
+
+	var displayName string
+	if err := row.Scan(&displayName); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return displayName, nil
+}
+
 // AcceptedFriendIDs returns the IDs of userID's accepted friends who currently
 // have sharing enabled toward userID.
 func (s *Store) AcceptedFriendIDsSharingWith(ctx context.Context, userID string) ([]string, error) {
