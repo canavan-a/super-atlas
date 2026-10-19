@@ -15,19 +15,26 @@ var (
 	ErrRefreshExpired     = errors.New("refresh token expired or revoked")
 )
 
+// Mailer sends the reset code out of band; satisfied by mail.Sender.
+type Mailer interface {
+	SendPasswordResetCode(to, code string) error
+}
+
 type Service struct {
 	store           *Store
 	accessSecret    []byte
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
+	mailer          Mailer
 }
 
-func NewService(store *Store, accessSecret []byte, accessTTL, refreshTTL time.Duration) *Service {
+func NewService(store *Store, accessSecret []byte, accessTTL, refreshTTL time.Duration, mailer Mailer) *Service {
 	return &Service{
 		store:           store,
 		accessSecret:    accessSecret,
 		accessTokenTTL:  accessTTL,
 		refreshTokenTTL: refreshTTL,
+		mailer:          mailer,
 	}
 }
 
@@ -128,4 +135,66 @@ func (s *Service) issueTokenPair(ctx context.Context, userID string) (*TokenPair
 
 func (s *Service) ParseAccessToken(tokenStr string) (*AccessClaims, error) {
 	return ParseAccessToken(s.accessSecret, tokenStr)
+}
+
+var ErrInvalidResetCode = errors.New("invalid or expired reset code")
+
+const resetCodeTTL = 15 * time.Minute
+
+// RequestPasswordReset emails a 6-digit code to the account, if it exists.
+// It intentionally succeeds silently for unknown emails so the endpoint
+// can't be used to probe which addresses have accounts.
+func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	user, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	code, err := generateResetCode()
+	if err != nil {
+		return err
+	}
+	if err := s.store.CreatePasswordResetCode(ctx, uuid.NewString(), user.ID, hashToken(code), time.Now().Add(resetCodeTTL)); err != nil {
+		return err
+	}
+	return s.mailer.SendPasswordResetCode(user.Email, code)
+}
+
+func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	user, err := s.store.GetUserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrInvalidResetCode
+		}
+		return err
+	}
+
+	rc, err := s.store.GetPasswordResetCode(ctx, user.ID, hashToken(code))
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return ErrInvalidResetCode
+		}
+		return err
+	}
+	if rc.UsedAt != nil || time.Now().After(rc.ExpiresAt) {
+		return ErrInvalidResetCode
+	}
+
+	hash, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	if err := s.store.MarkPasswordResetCodeUsed(ctx, rc.ID); err != nil {
+		return err
+	}
+	if err := s.store.UpdatePassword(ctx, user.ID, hash); err != nil {
+		return err
+	}
+	// Force every existing session to re-authenticate with the new password.
+	return s.store.RevokeAllRefreshTokens(ctx, user.ID)
 }

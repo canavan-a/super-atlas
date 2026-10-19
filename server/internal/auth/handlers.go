@@ -139,3 +139,47 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type resetPasswordRequest struct {
+	Email       string `json:"email"`
+	Code        string `json:"code"`
+	NewPassword string `json:"newPassword"`
+}
+
+func (h *Handlers) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req forgotPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Email) == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+	if err := h.service.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not send reset email")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetPasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Code) == "" || len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "email, code, and a password of at least 8 characters are required")
+		return
+	}
+	if err := h.service.ResetPassword(r.Context(), req.Email, strings.TrimSpace(req.Code), req.NewPassword); err != nil {
+		if errors.Is(err, ErrInvalidResetCode) {
+			writeError(w, http.StatusUnauthorized, "invalid or expired reset code")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not reset password")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

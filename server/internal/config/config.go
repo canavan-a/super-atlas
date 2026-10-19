@@ -15,6 +15,8 @@ type Config struct {
 	JWTRefreshSecret []byte
 	AccessTokenTTL   time.Duration
 	RefreshTokenTTL  time.Duration
+	SMTPEmail        string
+	SMTPAppPassword  string
 }
 
 func Load() (*Config, error) {
@@ -46,5 +48,7 @@ func Load() (*Config, error) {
 		JWTRefreshSecret: []byte(refreshSecret),
 		AccessTokenTTL:   15 * time.Minute,
 		RefreshTokenTTL:  30 * 24 * time.Hour,
+		SMTPEmail:        os.Getenv("SMTP_EMAIL"),
+		SMTPAppPassword:  os.Getenv("SMTP_APP_PASSWORD"),
 	}, nil
 }

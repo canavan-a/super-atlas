@@ -12,6 +12,7 @@ import (
 	"github.com/canavan-a/open-location/server/internal/httpapi"
 	"github.com/canavan-a/open-location/server/internal/larp"
 	"github.com/canavan-a/open-location/server/internal/location"
+	"github.com/canavan-a/open-location/server/internal/mail"
 )
 
 func main() {
@@ -31,8 +32,10 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
+	mailer := mail.NewSender(cfg.SMTPEmail, cfg.SMTPAppPassword)
+
 	authStore := auth.NewStore(conn)
-	authService := auth.NewService(authStore, cfg.JWTAccessSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	authService := auth.NewService(authStore, cfg.JWTAccessSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, mailer)
 	authHandlers := auth.NewHandlers(authService)
 
 	friendStore := friends.NewStore(conn)

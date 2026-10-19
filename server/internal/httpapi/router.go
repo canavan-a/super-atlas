@@ -34,6 +34,8 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/login", d.AuthHandlers.Login)
 		r.Post("/refresh", d.AuthHandlers.Refresh)
 		r.Post("/logout", d.AuthHandlers.Logout)
+		r.Post("/forgot-password", d.AuthHandlers.ForgotPassword)
+		r.Post("/reset-password", d.AuthHandlers.ResetPassword)
 	})
 
 	r.Group(func(r chi.Router) {

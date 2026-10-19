@@ -103,3 +103,62 @@ func (s *Store) RevokeRefreshToken(ctx context.Context, id string) error {
 	)
 	return err
 }
+
+type PasswordResetCode struct {
+	ID        string
+	UserID    string
+	CodeHash  string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
+func (s *Store) CreatePasswordResetCode(ctx context.Context, id, userID, codeHash string, expiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO password_reset_codes (id, user_id, code_hash, expires_at) VALUES (?, ?, ?, ?)`,
+		id, userID, codeHash, expiresAt.UTC().Format(timeLayout),
+	)
+	return err
+}
+
+func (s *Store) GetPasswordResetCode(ctx context.Context, userID, codeHash string) (*PasswordResetCode, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, code_hash, expires_at, used_at FROM password_reset_codes
+		 WHERE user_id = ? AND code_hash = ?`, userID, codeHash)
+	var c PasswordResetCode
+	var expiresAt string
+	var usedAt sql.NullString
+	if err := row.Scan(&c.ID, &c.UserID, &c.CodeHash, &expiresAt, &usedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	c.ExpiresAt, _ = time.Parse(timeLayout, expiresAt)
+	if usedAt.Valid {
+		t, _ := time.Parse(timeLayout, usedAt.String)
+		c.UsedAt = &t
+	}
+	return &c, nil
+}
+
+func (s *Store) MarkPasswordResetCodeUsed(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE password_reset_codes SET used_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(timeLayout), id,
+	)
+	return err
+}
+
+func (s *Store) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+	return err
+}
+
+func (s *Store) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`,
+		time.Now().UTC().Format(timeLayout), userID,
+	)
+	return err
+}

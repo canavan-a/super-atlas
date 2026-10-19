@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { usePermissionsGate } from '../location/usePermissionsGate';
+import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import LoginScreen from '../screens/LoginScreen';
 import MapScreen from '../screens/MapScreen';
@@ -35,6 +36,7 @@ export default function RootNavigator() {
       <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       </Stack.Navigator>
     );
   }

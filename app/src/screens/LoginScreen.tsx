@@ -68,6 +68,10 @@ export default function LoginScreen() {
           No account? <Text style={{ color: colors.accent }}>Create one</Text>
         </Text>
       </Pressable>
+
+      <Pressable onPress={() => navigation.navigate('ForgotPassword')} style={{ marginTop: 16, alignItems: 'center' }}>
+        <Text style={{ color: colors.accent }}>Forgot password?</Text>
+      </Pressable>
     </View>
   );
 }
