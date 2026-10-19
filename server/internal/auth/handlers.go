@@ -1,45 +1,34 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
+	"time"
+
+	"github.com/canavan-a/super-atlas/server/internal/ratelimit"
 )
 
+// GhostModeGetter reports a user's ghost-mode state for /me. Implemented by
+// the location service; declared here to avoid an import cycle.
+type GhostModeGetter interface {
+	GhostMode(ctx context.Context, userID string) (bool, error)
+}
+
 type Handlers struct {
-	service *Service
+	service   *Service
+	ghostMode GhostModeGetter
+	// One code per email per minute, however many IPs ask for it.
+	codesPerEmail *ratelimit.Limiter
 }
 
-func NewHandlers(service *Service) *Handlers {
-	return &Handlers{service: service}
-}
-
-type signupRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"displayName"`
-}
-
-type loginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type refreshRequest struct {
-	RefreshToken string `json:"refreshToken"`
-}
-
-type userResponse struct {
-	ID          string `json:"id"`
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
-}
-
-type authResponse struct {
-	User         userResponse `json:"user"`
-	AccessToken  string       `json:"accessToken"`
-	RefreshToken string       `json:"refreshToken"`
+func NewHandlers(service *Service, ghostMode GhostModeGetter) *Handlers {
+	return &Handlers{
+		service:       service,
+		ghostMode:     ghostMode,
+		codesPerEmail: ratelimit.New(1, time.Minute),
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -52,133 +41,103 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
-func (h *Handlers) Signup(w http.ResponseWriter, r *http.Request) {
-	var req signupRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	req.Email = strings.TrimSpace(req.Email)
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
-	if req.Email == "" || len(req.Password) < 8 || req.DisplayName == "" {
-		writeError(w, http.StatusBadRequest, "email, displayName, and a password of at least 8 characters are required")
-		return
-	}
-
-	user, err := h.service.Signup(r.Context(), req.Email, req.Password, req.DisplayName)
-	if err != nil {
-		if errors.Is(err, ErrEmailInUse) {
-			writeError(w, http.StatusConflict, "email already in use")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not create account")
-		return
-	}
-
-	_, pair, err := h.service.Login(r.Context(), req.Email, req.Password)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "account created but login failed")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, authResponse{
-		User:         userResponse{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
-		AccessToken:  pair.AccessToken,
-		RefreshToken: pair.RefreshToken,
-	})
+type userResponse struct {
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName"`
 }
 
-func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	user, pair, err := h.service.Login(r.Context(), req.Email, req.Password)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid email or password")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, authResponse{
-		User:         userResponse{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
-		AccessToken:  pair.AccessToken,
-		RefreshToken: pair.RefreshToken,
-	})
+func toUserResponse(u *User) userResponse {
+	return userResponse{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName}
 }
 
-func (h *Handlers) Refresh(w http.ResponseWriter, r *http.Request) {
-	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		writeError(w, http.StatusBadRequest, "refreshToken is required")
-		return
-	}
-
-	pair, err := h.service.Refresh(r.Context(), req.RefreshToken)
-	if err != nil {
-		writeError(w, http.StatusUnauthorized, "refresh token expired or revoked")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{
-		"accessToken":  pair.AccessToken,
-		"refreshToken": pair.RefreshToken,
-	})
-}
-
-func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
-	var req refreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
-		writeError(w, http.StatusBadRequest, "refreshToken is required")
-		return
-	}
-	if err := h.service.Logout(r.Context(), req.RefreshToken); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not log out")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-type forgotPasswordRequest struct {
+type codeRequest struct {
 	Email string `json:"email"`
 }
 
-type resetPasswordRequest struct {
-	Email       string `json:"email"`
-	Code        string `json:"code"`
-	NewPassword string `json:"newPassword"`
-}
-
-func (h *Handlers) ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	var req forgotPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Email) == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
+// Code emails a sign-in code. The response is the same whether or not the
+// email has an account.
+func (h *Handlers) Code(w http.ResponseWriter, r *http.Request) {
+	var req codeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.service.RequestPasswordReset(r.Context(), req.Email); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not send reset email")
+	if !h.codesPerEmail.Allow(NormalizeEmail(req.Email)) {
+		writeError(w, http.StatusTooManyRequests, "wait a minute before asking for another code")
+		return
+	}
+	if err := h.service.RequestCode(r.Context(), req.Email); err != nil {
+		if errors.Is(err, ErrInvalidEmail) {
+			writeError(w, http.StatusBadRequest, "enter a valid email")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not send code")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handlers) ResetPassword(w http.ResponseWriter, r *http.Request) {
-	var req resetPasswordRequest
+type verifyRequest struct {
+	Email       string `json:"email"`
+	Code        string `json:"code"`
+	DisplayName string `json:"displayName"`
+}
+
+type verifyResponse struct {
+	User  userResponse `json:"user"`
+	Token string       `json:"token"`
+}
+
+func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
+	var req verifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Code) == "" || len(req.NewPassword) < 8 {
-		writeError(w, http.StatusBadRequest, "email, code, and a password of at least 8 characters are required")
+	user, token, err := h.service.Verify(r.Context(), req.Email, req.Code, req.DisplayName)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidCode):
+			writeError(w, http.StatusUnauthorized, "that code is wrong or expired")
+		case errors.Is(err, ErrNeedsName):
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "new account needs a name", "needsName": true})
+		default:
+			writeError(w, http.StatusInternalServerError, "could not sign in")
+		}
 		return
 	}
-	if err := h.service.ResetPassword(r.Context(), req.Email, strings.TrimSpace(req.Code), req.NewPassword); err != nil {
-		if errors.Is(err, ErrInvalidResetCode) {
-			writeError(w, http.StatusUnauthorized, "invalid or expired reset code")
+	writeJSON(w, http.StatusOK, verifyResponse{User: toUserResponse(user), Token: token})
+}
+
+type meResponse struct {
+	User      userResponse `json:"user"`
+	GhostMode bool         `json:"ghostMode"`
+}
+
+func (h *Handlers) Me(w http.ResponseWriter, r *http.Request) {
+	userID, _ := UserIDFromContext(r.Context())
+	user, err := h.service.GetUser(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			writeError(w, http.StatusUnauthorized, "signed out")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "could not reset password")
+		writeError(w, http.StatusInternalServerError, "could not load account")
+		return
+	}
+	ghost, err := h.ghostMode.GhostMode(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load account")
+		return
+	}
+	writeJSON(w, http.StatusOK, meResponse{User: toUserResponse(user), GhostMode: ghost})
+}
+
+// Logout ends the session the request was made with.
+func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.Logout(r.Context(), tokenFromContext(r.Context())); err != nil {
+		writeError(w, http.StatusInternalServerError, "could not sign out")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

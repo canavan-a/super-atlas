@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/canavan-a/open-location/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/auth"
 	"github.com/gorilla/websocket"
 )
 
@@ -67,18 +67,11 @@ func (h *Handlers) Stream(w http.ResponseWriter, r *http.Request) {
 
 	// Send an initial snapshot of friends' last-known positions so the map
 	// has something to show before any friend's next live update arrives.
+	// It goes out as one frame so a long friends list can't overflow the
+	// client's send buffer.
 	if snapshot, err := h.service.SnapshotForViewer(r.Context(), userID); err == nil {
-		for _, loc := range snapshot {
-			payload, _ := json.Marshal(updatePayload{
-				Type:       "location_update",
-				UserID:     loc.UserID,
-				Latitude:   loc.Latitude,
-				Longitude:  loc.Longitude,
-				AccuracyM:  loc.AccuracyM,
-				RecordedAt: loc.RecordedAt.UTC().Format(time.RFC3339),
-			})
-			client.Send(payload)
-		}
+		payload, _ := json.Marshal(map[string]any{"type": "snapshot", "locations": snapshot})
+		client.Send(payload)
 	}
 
 	for {

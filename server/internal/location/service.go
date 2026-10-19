@@ -3,62 +3,79 @@ package location
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
-	"github.com/canavan-a/open-location/server/internal/friends"
+	"github.com/canavan-a/super-atlas/server/internal/friends"
 )
 
 type Service struct {
 	store       *Store
 	friendStore *friends.Store
 	hub         *Hub
+	// names caches display names for live pushes. Names can't be changed
+	// after sign-up, so entries never go stale.
+	names sync.Map
 }
 
 func NewService(store *Store, friendStore *friends.Store, hub *Hub) *Service {
 	return &Service{store: store, friendStore: friendStore, hub: hub}
 }
 
+// updatePayload is one friend's position, as pushed over the stream and
+// returned by the snapshot endpoint.
 type updatePayload struct {
-	Type       string  `json:"type"`
-	UserID     string  `json:"userId"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
-	AccuracyM  *float64 `json:"accuracyM,omitempty"`
-	RecordedAt string  `json:"recordedAt"`
+	Type        string   `json:"type"`
+	UserID      string   `json:"userId"`
+	DisplayName string   `json:"displayName"`
+	Latitude    float64  `json:"latitude"`
+	Longitude   float64  `json:"longitude"`
+	AccuracyM   *float64 `json:"accuracyM,omitempty"`
+	RecordedAt  string   `json:"recordedAt"`
 }
 
-// UpdateLocation stores a new position for userID and, unless the user has
-// paused sharing, pushes it live to any friend who currently has this user's
-// updates visible and an open WebSocket connection.
+func payloadFor(l Location) updatePayload {
+	return updatePayload{
+		Type:        "location_update",
+		UserID:      l.UserID,
+		DisplayName: l.DisplayName,
+		Latitude:    l.Latitude,
+		Longitude:   l.Longitude,
+		AccuracyM:   l.AccuracyM,
+		RecordedAt:  l.RecordedAt.UTC().Format(time.RFC3339),
+	}
+}
+
+// UpdateLocation stores a new position for userID and, unless the user is in
+// ghost mode, pushes it live to every accepted friend with an open
+// WebSocket connection.
 func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng float64, accuracy *float64, recordedAt time.Time) error {
 	if err := s.store.Upsert(ctx, userID, lat, lng, accuracy, recordedAt); err != nil {
 		return err
 	}
 
-	settings, err := s.store.GetSettings(ctx, userID)
+	ghost, err := s.GhostMode(ctx, userID)
+	if err != nil || ghost {
+		return err
+	}
+
+	viewers, err := s.friendStore.AcceptedFriendIDs(ctx, userID)
+	if err != nil || len(viewers) == 0 {
+		return err
+	}
+
+	name, err := s.displayName(ctx, userID)
 	if err != nil {
 		return err
 	}
-	if settings.SharingPaused {
-		return nil
-	}
-
-	viewers, err := s.viewersFor(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if len(viewers) == 0 {
-		return nil
-	}
-
-	payload, err := json.Marshal(updatePayload{
-		Type:       "location_update",
-		UserID:     userID,
-		Latitude:   lat,
-		Longitude:  lng,
-		AccuracyM:  accuracy,
-		RecordedAt: recordedAt.UTC().Format(time.RFC3339),
-	})
+	payload, err := json.Marshal(payloadFor(Location{
+		UserID:      userID,
+		DisplayName: name,
+		Latitude:    lat,
+		Longitude:   lng,
+		AccuracyM:   accuracy,
+		RecordedAt:  recordedAt,
+	}))
 	if err != nil {
 		return err
 	}
@@ -69,45 +86,42 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng fl
 	return nil
 }
 
-// viewersFor returns the IDs of accepted friends who have sharing enabled
-// *toward* userID, i.e. who are allowed to see userID move.
-func (s *Service) viewersFor(ctx context.Context, userID string) ([]string, error) {
-	views, err := s.friendStore.ListForUser(ctx, userID)
+func (s *Service) displayName(ctx context.Context, userID string) (string, error) {
+	if v, ok := s.names.Load(userID); ok {
+		return v.(string), nil
+	}
+	name, err := s.store.DisplayName(ctx, userID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	var viewers []string
-	for _, v := range views {
-		if v.Status == "accepted" && v.Sharing {
-			viewers = append(viewers, v.FriendID)
-		}
-	}
-	return viewers, nil
+	s.names.Store(userID, name)
+	return name, nil
 }
 
-// SnapshotForViewer returns the last-known locations of userID's friends who
-// currently share their location with userID (used for initial map load).
-func (s *Service) SnapshotForViewer(ctx context.Context, userID string) ([]Location, error) {
-	friendIDs, err := s.friendStore.AcceptedFriendIDsSharingWith(ctx, userID)
+// SnapshotForViewer returns the last-known positions of userID's friends,
+// leaving out anyone in ghost mode (used for initial map load).
+func (s *Service) SnapshotForViewer(ctx context.Context, userID string) ([]updatePayload, error) {
+	friendIDs, err := s.friendStore.AcceptedFriendIDs(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if len(friendIDs) == 0 {
-		return nil, nil
+	locs, err := s.store.GetForUsers(ctx, friendIDs)
+	if err != nil {
+		return nil, err
 	}
+	out := make([]updatePayload, 0, len(locs))
+	for _, l := range locs {
+		out = append(out, payloadFor(l))
+	}
+	return out, nil
+}
 
-	// Exclude any friend who has paused sharing globally.
-	var visible []string
-	for _, id := range friendIDs {
-		settings, err := s.store.GetSettings(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if !settings.SharingPaused {
-			visible = append(visible, id)
-		}
+func (s *Service) GhostMode(ctx context.Context, userID string) (bool, error) {
+	settings, err := s.store.GetSettings(ctx, userID)
+	if err != nil {
+		return false, err
 	}
-	return s.store.GetForUsers(ctx, visible)
+	return settings.SharingPaused, nil
 }
 
 func (s *Service) SetPaused(ctx context.Context, userID string, paused bool) error {

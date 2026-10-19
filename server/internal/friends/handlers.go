@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/canavan-a/open-location/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,11 +20,14 @@ type LarpToggler interface {
 
 type Handlers struct {
 	service *Service
-	larp    LarpToggler
+	// larp is nil unless the server runs in dev mode.
+	larp LarpToggler
+	// inviteURL turns an invite code into a shareable link.
+	inviteURL func(r *http.Request, code string) string
 }
 
-func NewHandlers(service *Service, larp LarpToggler) *Handlers {
-	return &Handlers{service: service, larp: larp}
+func NewHandlers(service *Service, larp LarpToggler, inviteURL func(r *http.Request, code string) string) *Handlers {
+	return &Handlers{service: service, larp: larp, inviteURL: inviteURL}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -44,12 +47,12 @@ type sendRequestBody struct {
 func (h *Handlers) SendRequest(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
 	var body sendRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Email == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Email) == "" {
 		writeError(w, http.StatusBadRequest, "email is required")
 		return
 	}
 
-	if strings.EqualFold(strings.TrimSpace(body.Email), "larp") {
+	if h.larp != nil && strings.EqualFold(strings.TrimSpace(body.Email), "larp") {
 		active, err := h.larp.Toggle(r.Context(), userID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "could not toggle larp")
@@ -63,11 +66,11 @@ func (h *Handlers) SendRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
-			writeError(w, http.StatusNotFound, "no user with that email")
+			writeError(w, http.StatusNotFound, "nobody has signed up with that email yet; send them your invite link instead")
 		case errors.Is(err, ErrSelfRequest):
-			writeError(w, http.StatusBadRequest, "cannot friend yourself")
+			writeError(w, http.StatusBadRequest, "that's your own email")
 		case errors.Is(err, ErrAlreadyExists):
-			writeError(w, http.StatusConflict, "friendship already exists")
+			writeError(w, http.StatusConflict, "you're already friends, or a request is already pending")
 		default:
 			writeError(w, http.StatusInternalServerError, "could not send friend request")
 		}
@@ -88,8 +91,7 @@ func (h *Handlers) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
-	id := chi.URLParam(r, "id")
-	if err := h.service.Accept(r.Context(), id, userID); err != nil {
+	if err := h.service.Accept(r.Context(), chi.URLParam(r, "id"), userID); err != nil {
 		handleActionErr(w, err)
 		return
 	}
@@ -98,52 +100,68 @@ func (h *Handlers) Accept(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) Remove(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
-	id := chi.URLParam(r, "id")
-	if err := h.service.Remove(r.Context(), id, userID); err != nil {
+	if err := h.service.Remove(r.Context(), chi.URLParam(r, "id"), userID); err != nil {
 		handleActionErr(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type setSharingBody struct {
-	Sharing bool `json:"sharing"`
+type inviteResponse struct {
+	Code string `json:"code"`
+	URL  string `json:"url"`
 }
 
-func (h *Handlers) SetSharing(w http.ResponseWriter, r *http.Request) {
+// Invite returns the caller's personal invite link.
+func (h *Handlers) Invite(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
-	id := chi.URLParam(r, "id")
-	var body setSharingBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	if err := h.service.SetSharing(r.Context(), id, userID, body.Sharing); err != nil {
-		handleActionErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handlers) GetName(w http.ResponseWriter, r *http.Request) {
-	userID, _ := auth.UserIDFromContext(r.Context())
-	otherID := chi.URLParam(r, "userId")
-	displayName, err := h.service.GetDisplayName(r.Context(), userID, otherID)
+	code, err := h.service.InviteCode(r.Context(), userID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "could not look up name")
+		writeError(w, http.StatusInternalServerError, "could not load invite link")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"userId": otherID, "displayName": displayName})
+	writeJSON(w, http.StatusOK, inviteResponse{Code: code, URL: h.inviteURL(r, code)})
+}
+
+// ResetInvite replaces the caller's invite link; the old one stops working.
+func (h *Handlers) ResetInvite(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserIDFromContext(r.Context())
+	code, err := h.service.ResetInviteCode(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not reset invite link")
+		return
+	}
+	writeJSON(w, http.StatusOK, inviteResponse{Code: code, URL: h.inviteURL(r, code)})
+}
+
+// InvitePreview says whose invite a code is, so the app can ask "Add <name>?".
+func (h *Handlers) InvitePreview(w http.ResponseWriter, r *http.Request) {
+	name, err := h.service.InviteOwner(r.Context(), chi.URLParam(r, "code"))
+	if err != nil {
+		handleActionErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"displayName": name})
+}
+
+func (h *Handlers) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+	userID, _ := auth.UserIDFromContext(r.Context())
+	name, err := h.service.AcceptInvite(r.Context(), userID, chi.URLParam(r, "code"))
+	if err != nil {
+		handleActionErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"displayName": name})
 }
 
 func handleActionErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound):
 		writeError(w, http.StatusNotFound, "friendship not found")
+	case errors.Is(err, ErrInvalidInvite):
+		writeError(w, http.StatusNotFound, "this invite link doesn't work anymore")
+	case errors.Is(err, ErrSelfRequest):
+		writeError(w, http.StatusBadRequest, "that's your own invite link")
 	case errors.Is(err, ErrNotYourRequest):
 		writeError(w, http.StatusForbidden, "not your friendship")
 	case errors.Is(err, ErrNotPending):

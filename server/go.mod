@@ -1,14 +1,12 @@
-module github.com/canavan-a/open-location/server
+module github.com/canavan-a/super-atlas/server
 
 go 1.26.4
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
-	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/joho/godotenv v1.5.1
-	golang.org/x/crypto v0.54.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	modernc.org/sqlite v1.53.0
 )

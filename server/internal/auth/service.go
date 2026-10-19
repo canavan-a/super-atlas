@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -10,191 +12,185 @@ import (
 )
 
 var (
-	ErrEmailInUse         = errors.New("email already in use")
-	ErrInvalidCredentials = errors.New("invalid email or password")
-	ErrRefreshExpired     = errors.New("refresh token expired or revoked")
+	ErrInvalidEmail   = errors.New("invalid email")
+	ErrInvalidCode    = errors.New("invalid or expired code")
+	ErrNeedsName      = errors.New("display name required for a new account")
+	ErrInvalidSession = errors.New("invalid or expired session")
 )
 
-// Mailer sends the reset code out of band; satisfied by mail.Sender.
+const (
+	codeTTL         = 10 * time.Minute
+	maxCodeAttempts = 5
+	// A session is only ever signed out after this long without being used.
+	sessionIdleTTL = 90 * 24 * time.Hour
+	// last_used_at/expires_at are rewritten at most this often per session,
+	// so ordinary requests don't each cost a database write.
+	sessionTouchEvery = time.Hour
+)
+
+// Mailer sends the sign-in code out of band; satisfied by mail.Sender.
 type Mailer interface {
-	SendPasswordResetCode(to, code string) error
+	SendLoginCode(to, code string) error
 }
 
 type Service struct {
-	store           *Store
-	accessSecret    []byte
-	accessTokenTTL  time.Duration
-	refreshTokenTTL time.Duration
-	mailer          Mailer
+	store  *Store
+	mailer Mailer
+	now    func() time.Time
 }
 
-func NewService(store *Store, accessSecret []byte, accessTTL, refreshTTL time.Duration, mailer Mailer) *Service {
-	return &Service{
-		store:           store,
-		accessSecret:    accessSecret,
-		accessTokenTTL:  accessTTL,
-		refreshTokenTTL: refreshTTL,
-		mailer:          mailer,
-	}
+func NewService(store *Store, mailer Mailer) *Service {
+	return &Service{store: store, mailer: mailer, now: time.Now}
 }
 
-type TokenPair struct {
-	AccessToken  string
-	RefreshToken string
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
-func (s *Service) Signup(ctx context.Context, email, password, displayName string) (*User, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if _, err := s.store.GetUserByEmail(ctx, email); err == nil {
-		return nil, ErrEmailInUse
-	} else if !errors.Is(err, ErrNotFound) {
-		return nil, err
+// RequestCode emails a fresh 6-digit code to email. It behaves the same
+// whether or not an account exists, since the same code also signs up.
+func (s *Service) RequestCode(ctx context.Context, email string) error {
+	email = NormalizeEmail(email)
+	if !strings.Contains(email, "@") || len(email) > 254 {
+		return ErrInvalidEmail
 	}
 
-	hash, err := HashPassword(password)
+	code, err := generateCode()
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if err := s.store.CreateLoginCode(ctx, uuid.NewString(), email, HashToken(code), s.now().Add(codeTTL)); err != nil {
+		return err
+	}
+	return s.mailer.SendLoginCode(email, code)
+}
+
+// Verify checks code against the latest one sent to email and, if it
+// matches, signs in (creating the account when there isn't one yet) and
+// returns a new session token. A new account needs displayName; without one
+// it returns ErrNeedsName and leaves the code usable for the retry.
+func (s *Service) Verify(ctx context.Context, email, code, displayName string) (*User, string, error) {
+	email = NormalizeEmail(email)
+	displayName = strings.TrimSpace(displayName)
+
+	lc, err := s.store.LatestLoginCode(ctx, email)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, "", ErrInvalidCode
+		}
+		return nil, "", err
+	}
+	if lc.UsedAt != nil || s.now().After(lc.ExpiresAt) || lc.Attempts >= maxCodeAttempts {
+		return nil, "", ErrInvalidCode
+	}
+	if subtle.ConstantTimeCompare([]byte(lc.CodeHash), []byte(HashToken(strings.TrimSpace(code)))) != 1 {
+		if err := s.store.IncrementLoginCodeAttempts(ctx, lc.ID); err != nil {
+			return nil, "", err
+		}
+		return nil, "", ErrInvalidCode
 	}
 
+	user, err := s.store.GetUserByEmail(ctx, email)
+	if errors.Is(err, ErrNotFound) {
+		if displayName == "" {
+			return nil, "", ErrNeedsName
+		}
+		user, err = s.createUser(ctx, email, displayName)
+	}
+	if err != nil {
+		return nil, "", err
+	}
+
+	if err := s.store.MarkLoginCodeUsed(ctx, lc.ID); err != nil {
+		return nil, "", err
+	}
+	token, err := s.createSession(ctx, user.ID)
+	if err != nil {
+		return nil, "", err
+	}
+	return user, token, nil
+}
+
+func (s *Service) createUser(ctx context.Context, email, displayName string) (*User, error) {
 	id := uuid.NewString()
-	if err := s.store.CreateUser(ctx, id, email, hash, displayName); err != nil {
+	if err := s.store.CreateUser(ctx, id, email, displayName); err != nil {
+		// Two verifies for the same new email racing: the loser's insert
+		// hits the UNIQUE constraint, and the winner's account is the one.
+		if u, getErr := s.store.GetUserByEmail(ctx, email); getErr == nil {
+			return u, nil
+		}
 		return nil, err
 	}
 	return s.store.GetUserByID(ctx, id)
 }
 
-func (s *Service) Login(ctx context.Context, email, password string) (*User, *TokenPair, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
-	user, err := s.store.GetUserByEmail(ctx, email)
+func (s *Service) createSession(ctx context.Context, userID string) (string, error) {
+	raw, hash, err := GenerateOpaqueToken()
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, nil, ErrInvalidCredentials
-		}
-		return nil, nil, err
+		return "", err
 	}
-	if !VerifyPassword(user.PasswordHash, password) {
-		return nil, nil, ErrInvalidCredentials
+	now := s.now()
+	if err := s.store.CreateSession(ctx, uuid.NewString(), userID, hash, now, now.Add(sessionIdleTTL)); err != nil {
+		return "", err
 	}
-
-	pair, err := s.issueTokenPair(ctx, user.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return user, pair, nil
+	return raw, nil
 }
 
-func (s *Service) Refresh(ctx context.Context, rawRefreshToken string) (*TokenPair, error) {
-	hash := hashToken(rawRefreshToken)
-	rt, err := s.store.GetRefreshToken(ctx, hash)
+// Authenticate resolves a session token to its user, sliding the session's
+// expiry forward as it's used.
+func (s *Service) Authenticate(ctx context.Context, token string) (string, error) {
+	sess, err := s.store.GetSessionByHash(ctx, HashToken(token))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return nil, ErrRefreshExpired
+			return "", ErrInvalidSession
 		}
-		return nil, err
+		return "", err
 	}
-	if rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
-		return nil, ErrRefreshExpired
+	now := s.now()
+	if now.After(sess.ExpiresAt) {
+		_ = s.store.DeleteSession(ctx, sess.ID)
+		return "", ErrInvalidSession
 	}
-
-	// Rotate: revoke the presented token and issue a fresh pair, so a stolen
-	// refresh token can only be replayed once before detection.
-	if err := s.store.RevokeRefreshToken(ctx, rt.ID); err != nil {
-		return nil, err
+	if now.Sub(sess.LastUsedAt) > sessionTouchEvery {
+		if err := s.store.TouchSession(ctx, sess.ID, now, now.Add(sessionIdleTTL)); err != nil {
+			return "", err
+		}
 	}
-	return s.issueTokenPair(ctx, rt.UserID)
+	return sess.UserID, nil
 }
 
-func (s *Service) Logout(ctx context.Context, rawRefreshToken string) error {
-	hash := hashToken(rawRefreshToken)
-	rt, err := s.store.GetRefreshToken(ctx, hash)
+// Logout ends the session for token. Unknown tokens are a no-op.
+func (s *Service) Logout(ctx context.Context, token string) error {
+	sess, err := s.store.GetSessionByHash(ctx, HashToken(token))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil
 		}
 		return err
 	}
-	return s.store.RevokeRefreshToken(ctx, rt.ID)
+	return s.store.DeleteSession(ctx, sess.ID)
 }
 
-func (s *Service) issueTokenPair(ctx context.Context, userID string) (*TokenPair, error) {
-	access, err := GenerateAccessToken(s.accessSecret, userID, s.accessTokenTTL)
-	if err != nil {
-		return nil, err
-	}
-
-	rawRefresh, hash, err := generateOpaqueToken()
-	if err != nil {
-		return nil, err
-	}
-	if err := s.store.CreateRefreshToken(ctx, uuid.NewString(), userID, hash, time.Now().Add(s.refreshTokenTTL)); err != nil {
-		return nil, err
-	}
-
-	return &TokenPair{AccessToken: access, RefreshToken: rawRefresh}, nil
+func (s *Service) GetUser(ctx context.Context, id string) (*User, error) {
+	return s.store.GetUserByID(ctx, id)
 }
 
-func (s *Service) ParseAccessToken(tokenStr string) (*AccessClaims, error) {
-	return ParseAccessToken(s.accessSecret, tokenStr)
-}
-
-var ErrInvalidResetCode = errors.New("invalid or expired reset code")
-
-const resetCodeTTL = 15 * time.Minute
-
-// RequestPasswordReset emails a 6-digit code to the account, if it exists.
-// It intentionally succeeds silently for unknown emails so the endpoint
-// can't be used to probe which addresses have accounts.
-func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
-	email = strings.ToLower(strings.TrimSpace(email))
-	user, err := s.store.GetUserByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil
+// RunJanitor deletes expired codes and sessions every hour until ctx ends.
+func (s *Service) RunJanitor(ctx context.Context) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		now := s.now()
+		if err := s.store.DeleteExpiredLoginCodes(ctx, now); err != nil {
+			log.Printf("janitor: login codes: %v", err)
 		}
-		return err
-	}
-
-	code, err := generateResetCode()
-	if err != nil {
-		return err
-	}
-	if err := s.store.CreatePasswordResetCode(ctx, uuid.NewString(), user.ID, hashToken(code), time.Now().Add(resetCodeTTL)); err != nil {
-		return err
-	}
-	return s.mailer.SendPasswordResetCode(user.Email, code)
-}
-
-func (s *Service) ResetPassword(ctx context.Context, email, code, newPassword string) error {
-	email = strings.ToLower(strings.TrimSpace(email))
-	user, err := s.store.GetUserByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return ErrInvalidResetCode
+		if err := s.store.DeleteExpiredSessions(ctx, now); err != nil {
+			log.Printf("janitor: sessions: %v", err)
 		}
-		return err
-	}
-
-	rc, err := s.store.GetPasswordResetCode(ctx, user.ID, hashToken(code))
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return ErrInvalidResetCode
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
-		return err
 	}
-	if rc.UsedAt != nil || time.Now().After(rc.ExpiresAt) {
-		return ErrInvalidResetCode
-	}
-
-	hash, err := HashPassword(newPassword)
-	if err != nil {
-		return err
-	}
-	if err := s.store.MarkPasswordResetCodeUsed(ctx, rc.ID); err != nil {
-		return err
-	}
-	if err := s.store.UpdatePassword(ctx, user.ID, hash); err != nil {
-		return err
-	}
-	// Force every existing session to re-authenticate with the new password.
-	return s.store.RevokeAllRefreshTokens(ctx, user.ID)
 }

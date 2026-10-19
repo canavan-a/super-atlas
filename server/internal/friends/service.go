@@ -2,19 +2,22 @@ package friends
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base32"
 	"errors"
 	"strings"
 
-	"github.com/canavan-a/open-location/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/auth"
 	"github.com/google/uuid"
 )
 
 var (
-	ErrSelfRequest       = errors.New("cannot friend yourself")
-	ErrAlreadyExists     = errors.New("friendship already exists")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrNotYourRequest    = errors.New("not your request to act on")
-	ErrNotPending        = errors.New("friendship is not pending")
+	ErrSelfRequest    = errors.New("cannot friend yourself")
+	ErrAlreadyExists  = errors.New("friendship already exists")
+	ErrUserNotFound   = errors.New("user not found")
+	ErrNotYourRequest = errors.New("not your request to act on")
+	ErrNotPending     = errors.New("friendship is not pending")
+	ErrInvalidInvite  = errors.New("invite link is invalid")
 )
 
 type Service struct {
@@ -26,9 +29,11 @@ func NewService(store *Store, authStore *auth.Store) *Service {
 	return &Service{store: store, authStore: authStore}
 }
 
-// SendRequest creates a pending friendship from requesterID to the user with addresseeEmail.
+// SendRequest creates a pending friendship from requesterID to the user with
+// addresseeEmail. If that user already sent requesterID a request, this
+// accepts it instead.
 func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeEmail string) (*Friendship, error) {
-	addressee, err := s.authStore.GetUserByEmail(ctx, strings.ToLower(strings.TrimSpace(addresseeEmail)))
+	addressee, err := s.authStore.GetUserByEmail(ctx, auth.NormalizeEmail(addresseeEmail))
 	if err != nil {
 		if errors.Is(err, auth.ErrNotFound) {
 			return nil, ErrUserNotFound
@@ -39,9 +44,17 @@ func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeEmail s
 		return nil, ErrSelfRequest
 	}
 
-	if _, err := s.store.GetByUsers(ctx, requesterID, addressee.ID); err == nil {
+	existing, err := s.store.GetByUsers(ctx, requesterID, addressee.ID)
+	switch {
+	case err == nil:
+		if existing.Status == "pending" && existing.AddresseeID == requesterID {
+			if err := s.store.Accept(ctx, existing.ID); err != nil {
+				return nil, err
+			}
+			return s.store.GetByID(ctx, existing.ID)
+		}
 		return nil, ErrAlreadyExists
-	} else if !errors.Is(err, ErrNotFound) {
+	case !errors.Is(err, ErrNotFound):
 		return nil, err
 	}
 
@@ -66,7 +79,8 @@ func (s *Service) Accept(ctx context.Context, friendshipID, userID string) error
 	return s.store.Accept(ctx, friendshipID)
 }
 
-// Decline handles both rejecting a pending request and removing an accepted friendship.
+// Remove handles declining or cancelling a pending request and removing an
+// accepted friendship.
 func (s *Service) Remove(ctx context.Context, friendshipID, userID string) error {
 	f, err := s.store.GetByID(ctx, friendshipID)
 	if err != nil {
@@ -78,26 +92,86 @@ func (s *Service) Remove(ctx context.Context, friendshipID, userID string) error
 	return s.store.Delete(ctx, friendshipID)
 }
 
-func (s *Service) SetSharing(ctx context.Context, friendshipID, userID string, sharing bool) error {
-	return s.store.SetSharing(ctx, friendshipID, userID, sharing)
-}
-
 func (s *Service) List(ctx context.Context, userID string) ([]FriendView, error) {
 	return s.store.ListForUser(ctx, userID)
 }
 
-// GetDisplayName returns otherID's display name, but only if userID is
-// otherID (looking up their own name) or the two are accepted friends.
-func (s *Service) GetDisplayName(ctx context.Context, userID, otherID string) (string, error) {
-	if userID == otherID {
-		u, err := s.authStore.GetUserByID(ctx, otherID)
-		if err != nil {
-			if errors.Is(err, auth.ErrNotFound) {
-				return "", ErrNotFound
-			}
-			return "", err
-		}
-		return u.DisplayName, nil
+// InviteCode returns userID's personal invite code, creating it on first use.
+func (s *Service) InviteCode(ctx context.Context, userID string) (string, error) {
+	code, err := s.store.InviteCode(ctx, userID)
+	if err != nil || code != "" {
+		return code, err
 	}
-	return s.store.AcceptedFriendDisplayName(ctx, userID, otherID)
+	return s.ResetInviteCode(ctx, userID)
+}
+
+// ResetInviteCode replaces userID's invite code, so links shared before stop
+// working.
+func (s *Service) ResetInviteCode(ctx context.Context, userID string) (string, error) {
+	code, err := newInviteCode()
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.SetInviteCode(ctx, userID, code); err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// InviteOwner returns the display name of the person an invite code belongs to.
+func (s *Service) InviteOwner(ctx context.Context, code string) (string, error) {
+	_, name, err := s.store.UserByInviteCode(ctx, code)
+	if errors.Is(err, ErrNotFound) {
+		return "", ErrInvalidInvite
+	}
+	return name, err
+}
+
+// AcceptInvite makes userID and the code's owner friends straight away. It's
+// a no-op if they already are, and accepts a pending request either way.
+func (s *Service) AcceptInvite(ctx context.Context, userID, code string) (string, error) {
+	ownerID, ownerName, err := s.store.UserByInviteCode(ctx, code)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return "", ErrInvalidInvite
+		}
+		return "", err
+	}
+	if ownerID == userID {
+		return "", ErrSelfRequest
+	}
+
+	existing, err := s.store.GetByUsers(ctx, userID, ownerID)
+	switch {
+	case err == nil:
+		if existing.Status == "pending" {
+			if err := s.store.Accept(ctx, existing.ID); err != nil {
+				return "", err
+			}
+		}
+		return ownerName, nil
+	case !errors.Is(err, ErrNotFound):
+		return "", err
+	}
+
+	id := uuid.NewString()
+	if err := s.store.Create(ctx, id, ownerID, userID); err != nil {
+		return "", err
+	}
+	if err := s.store.Accept(ctx, id); err != nil {
+		return "", err
+	}
+	return ownerName, nil
+}
+
+// newInviteCode returns 60 random bits as 12 lowercase base32 characters:
+// short enough to read aloud, long enough that guessing one (behind a rate
+// limit) isn't practical.
+func newInviteCode() (string, error) {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	enc := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(buf)
+	return strings.ToLower(enc[:12]), nil
 }

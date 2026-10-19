@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/canavan-a/open-location/server/internal/auth"
-	"github.com/canavan-a/open-location/server/internal/friends"
-	"github.com/canavan-a/open-location/server/internal/location"
+	"github.com/canavan-a/super-atlas/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/friends"
+	"github.com/canavan-a/super-atlas/server/internal/location"
 	"github.com/google/uuid"
 )
 
@@ -92,11 +92,7 @@ func (s *Service) createFakeFriends(ctx context.Context, ownerID string, base st
 		id := uuid.NewString()
 		email := fmt.Sprintf("larp%d-%s@fake.local", i, id[:8])
 		displayName := fakeNames[i%len(fakeNames)]
-		passwordHash, err := auth.HashPassword(uuid.NewString())
-		if err != nil {
-			return nil, err
-		}
-		if err := s.authStore.CreateUser(ctx, id, email, passwordHash, displayName); err != nil {
+		if err := s.authStore.CreateUser(ctx, id, email, displayName); err != nil {
 			return nil, err
 		}
 		if err := s.store.RecordFakeUser(ctx, id, ownerID); err != nil {

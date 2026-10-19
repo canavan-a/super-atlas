@@ -12,12 +12,13 @@ var ErrNotFound = errors.New("not found")
 const timeLayout = "2006-01-02T15:04:05.999Z07:00"
 
 type Location struct {
-	UserID     string
-	Latitude   float64
-	Longitude  float64
-	AccuracyM  *float64
-	RecordedAt time.Time
-	UpdatedAt  time.Time
+	UserID      string
+	DisplayName string
+	Latitude    float64
+	Longitude   float64
+	AccuracyM   *float64
+	RecordedAt  time.Time
+	UpdatedAt   time.Time
 }
 
 type Store struct {
@@ -47,7 +48,12 @@ func (s *Store) GetForUsers(ctx context.Context, userIDs []string) ([]Location, 
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
-	query := `SELECT user_id, latitude, longitude, accuracy_m, recorded_at, updated_at FROM locations WHERE user_id IN (` + placeholders(len(userIDs)) + `)`
+	// Users in ghost mode are left out here, so callers never have to filter.
+	query := `SELECT l.user_id, u.display_name, l.latitude, l.longitude, l.accuracy_m, l.recorded_at, l.updated_at
+		FROM locations l
+		JOIN users u ON u.id = l.user_id
+		LEFT JOIN user_settings us ON us.user_id = l.user_id
+		WHERE COALESCE(us.sharing_paused, 0) = 0 AND l.user_id IN (` + placeholders(len(userIDs)) + `)`
 	args := make([]any, len(userIDs))
 	for i, id := range userIDs {
 		args[i] = id
@@ -63,7 +69,7 @@ func (s *Store) GetForUsers(ctx context.Context, userIDs []string) ([]Location, 
 		var l Location
 		var recordedAt, updatedAt string
 		var accuracy sql.NullFloat64
-		if err := rows.Scan(&l.UserID, &l.Latitude, &l.Longitude, &accuracy, &recordedAt, &updatedAt); err != nil {
+		if err := rows.Scan(&l.UserID, &l.DisplayName, &l.Latitude, &l.Longitude, &accuracy, &recordedAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		if accuracy.Valid {
@@ -85,6 +91,12 @@ func placeholders(n int) string {
 		out = append(out, '?')
 	}
 	return string(out)
+}
+
+func (s *Store) DisplayName(ctx context.Context, userID string) (string, error) {
+	var name string
+	err := s.db.QueryRowContext(ctx, `SELECT display_name FROM users WHERE id = ?`, userID).Scan(&name)
+	return name, err
 }
 
 // Settings

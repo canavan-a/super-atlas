@@ -10,19 +10,26 @@ import (
 var ErrNotFound = errors.New("not found")
 
 type User struct {
-	ID           string
-	Email        string
-	PasswordHash string
-	DisplayName  string
-	CreatedAt    time.Time
+	ID          string
+	Email       string
+	DisplayName string
+	CreatedAt   time.Time
 }
 
-type RefreshToken struct {
+type LoginCode struct {
 	ID        string
-	UserID    string
-	TokenHash string
+	Email     string
+	CodeHash  string
 	ExpiresAt time.Time
-	RevokedAt *time.Time
+	Attempts  int
+	UsedAt    *time.Time
+}
+
+type Session struct {
+	ID         string
+	UserID     string
+	LastUsedAt time.Time
+	ExpiresAt  time.Time
 }
 
 type Store struct {
@@ -35,130 +42,131 @@ func NewStore(db *sql.DB) *Store {
 
 const timeLayout = "2006-01-02T15:04:05.999Z07:00"
 
-func (s *Store) CreateUser(ctx context.Context, id, email, passwordHash, displayName string) error {
+func formatTime(t time.Time) string { return t.UTC().Format(timeLayout) }
+
+func parseTime(s string) time.Time {
+	t, _ := time.Parse(timeLayout, s)
+	return t
+}
+
+func (s *Store) CreateUser(ctx context.Context, id, email, displayName string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)`,
-		id, email, passwordHash, displayName,
+		`INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)`,
+		id, email, displayName,
 	)
 	return err
 }
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, display_name, created_at FROM users WHERE email = ?`, email)
+		`SELECT id, email, display_name, created_at FROM users WHERE email = ?`, email)
 	return scanUser(row)
 }
 
 func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, display_name, created_at FROM users WHERE id = ?`, id)
+		`SELECT id, email, display_name, created_at FROM users WHERE id = ?`, id)
 	return scanUser(row)
 }
 
 func scanUser(row *sql.Row) (*User, error) {
 	var u User
 	var createdAt string
-	if err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.DisplayName, &createdAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	u.CreatedAt, _ = time.Parse(timeLayout, createdAt)
+	u.CreatedAt = parseTime(createdAt)
 	return &u, nil
 }
 
-func (s *Store) CreateRefreshToken(ctx context.Context, id, userID, tokenHash string, expiresAt time.Time) error {
+func (s *Store) CreateLoginCode(ctx context.Context, id, email, codeHash string, expiresAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)`,
-		id, userID, tokenHash, expiresAt.UTC().Format(timeLayout),
+		`INSERT INTO login_codes (id, email, code_hash, expires_at) VALUES (?, ?, ?, ?)`,
+		id, email, codeHash, formatTime(expiresAt),
 	)
 	return err
 }
 
-func (s *Store) GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error) {
+// LatestLoginCode returns the most recently issued code for email. Only the
+// latest one counts: requesting a new code retires the previous one.
+func (s *Store) LatestLoginCode(ctx context.Context, email string) (*LoginCode, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, token_hash, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = ?`, tokenHash)
-	var rt RefreshToken
-	var expiresAt string
-	var revokedAt sql.NullString
-	if err := row.Scan(&rt.ID, &rt.UserID, &rt.TokenHash, &expiresAt, &revokedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrNotFound
-		}
-		return nil, err
-	}
-	rt.ExpiresAt, _ = time.Parse(timeLayout, expiresAt)
-	if revokedAt.Valid {
-		t, _ := time.Parse(timeLayout, revokedAt.String)
-		rt.RevokedAt = &t
-	}
-	return &rt, nil
-}
-
-func (s *Store) RevokeRefreshToken(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE refresh_tokens SET revoked_at = ? WHERE id = ?`,
-		time.Now().UTC().Format(timeLayout), id,
-	)
-	return err
-}
-
-type PasswordResetCode struct {
-	ID        string
-	UserID    string
-	CodeHash  string
-	ExpiresAt time.Time
-	UsedAt    *time.Time
-}
-
-func (s *Store) CreatePasswordResetCode(ctx context.Context, id, userID, codeHash string, expiresAt time.Time) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO password_reset_codes (id, user_id, code_hash, expires_at) VALUES (?, ?, ?, ?)`,
-		id, userID, codeHash, expiresAt.UTC().Format(timeLayout),
-	)
-	return err
-}
-
-func (s *Store) GetPasswordResetCode(ctx context.Context, userID, codeHash string) (*PasswordResetCode, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, code_hash, expires_at, used_at FROM password_reset_codes
-		 WHERE user_id = ? AND code_hash = ?`, userID, codeHash)
-	var c PasswordResetCode
+		`SELECT id, email, code_hash, expires_at, attempts, used_at FROM login_codes
+		 WHERE email = ? ORDER BY rowid DESC LIMIT 1`, email)
+	var c LoginCode
 	var expiresAt string
 	var usedAt sql.NullString
-	if err := row.Scan(&c.ID, &c.UserID, &c.CodeHash, &expiresAt, &usedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.Email, &c.CodeHash, &expiresAt, &c.Attempts, &usedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	c.ExpiresAt, _ = time.Parse(timeLayout, expiresAt)
+	c.ExpiresAt = parseTime(expiresAt)
 	if usedAt.Valid {
-		t, _ := time.Parse(timeLayout, usedAt.String)
+		t := parseTime(usedAt.String)
 		c.UsedAt = &t
 	}
 	return &c, nil
 }
 
-func (s *Store) MarkPasswordResetCodeUsed(ctx context.Context, id string) error {
+func (s *Store) IncrementLoginCodeAttempts(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE login_codes SET attempts = attempts + 1 WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) MarkLoginCodeUsed(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE login_codes SET used_at = ? WHERE id = ?`, formatTime(time.Now()), id)
+	return err
+}
+
+// DeleteExpiredLoginCodes keeps the table from growing without bound.
+func (s *Store) DeleteExpiredLoginCodes(ctx context.Context, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM login_codes WHERE expires_at < ?`, formatTime(now))
+	return err
+}
+
+func (s *Store) CreateSession(ctx context.Context, id, userID, tokenHash string, now, expiresAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE password_reset_codes SET used_at = ? WHERE id = ?`,
-		time.Now().UTC().Format(timeLayout), id,
+		`INSERT INTO sessions (id, user_id, token_hash, last_used_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+		id, userID, tokenHash, formatTime(now), formatTime(expiresAt),
 	)
 	return err
 }
 
-func (s *Store) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+func (s *Store) GetSessionByHash(ctx context.Context, tokenHash string) (*Session, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, last_used_at, expires_at FROM sessions WHERE token_hash = ?`, tokenHash)
+	var sess Session
+	var lastUsedAt, expiresAt string
+	if err := row.Scan(&sess.ID, &sess.UserID, &lastUsedAt, &expiresAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	sess.LastUsedAt = parseTime(lastUsedAt)
+	sess.ExpiresAt = parseTime(expiresAt)
+	return &sess, nil
+}
+
+func (s *Store) TouchSession(ctx context.Context, id string, now, expiresAt time.Time) error {
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+		`UPDATE sessions SET last_used_at = ?, expires_at = ? WHERE id = ?`,
+		formatTime(now), formatTime(expiresAt), id,
+	)
 	return err
 }
 
-func (s *Store) RevokeAllRefreshTokens(ctx context.Context, userID string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE refresh_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`,
-		time.Now().UTC().Format(timeLayout), userID,
-	)
+func (s *Store) DeleteSession(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, formatTime(now))
 	return err
 }
