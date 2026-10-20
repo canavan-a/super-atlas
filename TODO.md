@@ -1,5 +1,14 @@
 # Remaining work
 
+## Deploy (the superchat host, `/etc/nixos`)
+- [x] `services.superatlas` in `modules/superchat.nix` (127.0.0.1:8090, `https://atlas.superbadger.io`, web client on) and the `super-atlas` flake input.
+- [ ] Push this repo, then `nix flake update super-atlas` in `/etc/nixos` so the host picks up the allowlist.
+- [ ] Put the Gmail login on the box: `/etc/superatlas/env` with `SUPERATLAS_SMTP_EMAIL` and `SUPERATLAS_SMTP_APP_PASSWORD` (the service won't start without it).
+- [ ] Cloudflare tunnel: route `atlas.superbadger.io` → `http://localhost:8090`.
+- [ ] Deploy, check port 8090 is free first (`sudo ss -ltnp | grep 8090`), then `superatlas-admin allow <email>` for each person.
+- [ ] After `release/gen-keystore.sh`, put the key's SHA-256 in `androidCertSha256` so invite links open the app.
+- [ ] Optional: `inputs.nixpkgs.follows = "nixpkgs"` on the `super-atlas` input to skip its second nixpkgs.
+
 ## App (`app/`)
 - [ ] Offline map tiles: prefetch/cache a region with MapLibre's offline manager, add a "download this area" action, and optionally auto-refresh cached tiles on wifi. Render cached last-known friend positions on top when there's no connection.
 - [x] Resolve friend display names on the map (names now come with every location).
@@ -14,14 +23,19 @@
 ## Server (`server/`)
 - [x] Invite-only sign-in: an email allowlist managed with `superatlas-admin`.
 - [x] Rate limiting: per IP on `/auth/*` and invites, per email on codes and guesses, an hourly cap on all codes sent, and per account on signed-in endpoints.
-- [ ] Keep session tokens out of the request log (the WebSocket streams pass them as `?token=`).
-- [ ] Size limits on request bodies and WebSocket messages, and server timeouts.
-- [ ] Build the web client without npm install scripts running as root (`module.nix`).
 - [x] FCM dispatch on friend events.
 - [x] `/me` endpoint.
-- [ ] Structured logging / error tracking (currently just chi's default request logger).
+- [x] Go test suite (auth, friends, locations, notifications, push, allowlist).
+- [ ] Configurable SMTP (`SUPERATLAS_SMTP_HOST`/`_PORT`/`_FROM`, Gmail by default), so codes can come from a relay like Resend, Postmark or SES on your own domain. It's hard-coded to `smtp.gmail.com:587` now.
 - [ ] SQLite backups (single-file DB, so backup = copy the file + WAL).
-- [x] Go test suite (auth, friends, locations, notifications, push).
+- [ ] Structured logging / error tracking (currently just chi's default request logger).
+
+### Hardening (left over from the public-exposure audit)
+- [ ] Keep session tokens out of the request log (the WebSocket streams pass them as `?token=`).
+- [ ] Size limits on request bodies and WebSocket messages, and server timeouts.
+- [ ] Build the web client without npm install scripts running as root (`module.nix`; super-chat's module has the same issue).
+- [ ] Range-check shared locations (latitude/longitude, `recordedAt` not in the future).
+- [ ] Don't let a push token move to another account (`PUT /push/token` reassigns one that already exists).
 
 ## Store shipping
 - [ ] Privacy policy page (required by Google Play for a precise-location app); could be a page of the web build, as super-chat's `/privacy`.
