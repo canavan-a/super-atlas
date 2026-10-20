@@ -2,13 +2,16 @@ import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/
 import { StatusBar } from 'expo-status-bar';
 import { useMemo } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useThemedAppIcon } from './src/appIcon';
 import { AuthProvider } from './src/auth/AuthContext';
+import { SplashGate } from './src/logo/SplashGate';
 import { InvitePrompt } from './src/friends/InvitePrompt';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ThemeProvider, useTheme } from './src/theme';
 
 function ThemedApp() {
   const theme = useTheme();
+  useThemedAppIcon();
   const navTheme = useMemo(() => {
     const base = theme.isDark ? DarkTheme : DefaultTheme;
     return {
@@ -26,11 +29,13 @@ function ThemedApp() {
   }, [theme]);
 
   return (
-    <NavigationContainer theme={navTheme}>
-      <RootNavigator />
-      <InvitePrompt />
-      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
-    </NavigationContainer>
+    <SplashGate>
+      <NavigationContainer theme={navTheme}>
+        <RootNavigator />
+        <InvitePrompt />
+        <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+      </NavigationContainer>
+    </SplashGate>
   );
 }
 

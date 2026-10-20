@@ -6,7 +6,6 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true
     },
@@ -28,6 +27,7 @@
       "expo-background-task",
       "@maplibre/maplibre-react-native",
       "expo-status-bar",
+      "./plugins/withAppIcon.js",
       [
         "expo-location",
         {

@@ -11,13 +11,16 @@ export interface Settings {
   // Crash-loop protection for the launch splash: a launch counts as a strike
   // before the animation starts and is cleared when it finishes, so a launch
   // that dies mid-animation leaves one behind. After too many in a row the
-  // splash turns itself off instead of crashing again.
+  // splash turns itself off (launchSplash) instead of crashing again. None of
+  // this is shown in Settings.
+  launchSplash: boolean;
   splashStrikes: number;
   splashAutoDisabled: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   themeName: 'dark',
+  launchSplash: true,
   splashStrikes: 0,
   splashAutoDisabled: false,
 };

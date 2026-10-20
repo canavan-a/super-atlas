@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { ensureBackgroundLocationTask } from '../location/backgroundTask';
 import { usePermissionsGate } from '../location/usePermissionsGate';
+import { splashHold } from '../logo/splashHold';
 import FriendsScreen from '../screens/FriendsScreen';
 import MapScreen from '../screens/MapScreen';
 import PermissionsGateScreen from '../screens/PermissionsGateScreen';
@@ -26,7 +27,13 @@ export default function RootNavigator() {
     }
   }, [status, permissions.allGranted]);
 
-  if (status === 'loading' || permissions.loading) {
+  const loading = status === 'loading' || permissions.loading;
+  useEffect(() => {
+    if (loading) splashHold.hold();
+    else splashHold.release();
+  }, [loading]);
+
+  if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={theme.primary} />
