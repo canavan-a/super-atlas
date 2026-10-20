@@ -1,41 +1,4 @@
 {
-  "expo": {
-    "name": "Super Atlas",
-    "slug": "super-atlas",
-    "scheme": "superatlas",
-    "version": "0.1.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "ios": {
-      "supportsTablet": true
-    },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#0d1117",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.superatlasapp"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": [
-      "expo-secure-store",
-      "expo-background-task",
-      "@maplibre/maplibre-react-native",
-      "expo-status-bar",
-      "./plugins/withAppIcon.js",
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location so friends can see where you are.",
-          "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
-        }
-      ]
-    ]
-  }
+  "name": "SuperAtlasApp",
+  "displayName": "Super Atlas"
 }

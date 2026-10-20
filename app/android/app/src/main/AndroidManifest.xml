@@ -1,0 +1,71 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <category android:name="android.intent.category.BROWSABLE"/>
+      <data android:scheme="https"/>
+    </intent>
+  </queries>
+  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_dark" android:roundIcon="@mipmap/ic_launcher_dark_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:fullBackupContent="@xml/secure_store_backup_rules" android:dataExtractionRules="@xml/secure_store_data_extraction_rules">
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="superatlas"/>
+      </intent-filter>
+      <!-- Invite links on the server the app was built for (-PapiHost, see
+           app/build.gradle). The server proves the app owns them through
+           /.well-known/assetlinks.json. -->
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="${apiHost}" android:pathPrefix="/i/"/>
+      </intent-filter>
+    </activity>
+    <!-- The launcher entries. MainActivity isn't launchable by itself; there
+         is one alias per app theme, each with that theme's icon, and exactly
+         one is enabled at a time (dark by default). AppIconModule.kt enables
+         the one matching the current theme as the app goes to the background
+         (src/appIcon.ts). The icons come from tools/appart. -->
+    <activity-alias android:name=".IconLight" android:targetActivity=".MainActivity" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_light" android:roundIcon="@mipmap/ic_launcher_light_round" android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>
+    <activity-alias android:name=".IconDark" android:targetActivity=".MainActivity" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_dark" android:roundIcon="@mipmap/ic_launcher_dark_round" android:enabled="true" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>
+    <activity-alias android:name=".IconSlate" android:targetActivity=".MainActivity" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_slate" android:roundIcon="@mipmap/ic_launcher_slate_round" android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>
+    <activity-alias android:name=".IconSepia" android:targetActivity=".MainActivity" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_sepia" android:roundIcon="@mipmap/ic_launcher_sepia_round" android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>
+    <activity-alias android:name=".IconEmber" android:targetActivity=".MainActivity" android:label="@string/app_name" android:icon="@mipmap/ic_launcher_ember" android:roundIcon="@mipmap/ic_launcher_ember_round" android:enabled="false" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity-alias>
+  </application>
+</manifest>

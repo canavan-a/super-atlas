@@ -1,0 +1,33 @@
+<!-- The sideloaded build (release/release.sh): merged over
+     src/main/AndroidManifest.xml. Adds the in-app updater's install
+     permission and FileProvider, and the opt-in background notification
+     connection (NotifyService.kt). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application>
+      <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.updateprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/file_paths" />
+      </provider>
+
+      <service
+        android:name=".NotifyService"
+        android:foregroundServiceType="dataSync"
+        android:exported="false" />
+
+      <receiver android:name=".BootReceiver" android:exported="false">
+        <intent-filter>
+          <action android:name="android.intent.action.BOOT_COMPLETED" />
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+      </receiver>
+    </application>
+</manifest>

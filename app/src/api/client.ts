@@ -1,26 +1,15 @@
-import * as SecureStore from 'expo-secure-store';
+import { apiUrl } from '../distribution';
+import { tokenStore } from './tokenStore';
 
-const SESSION_TOKEN_KEY = 'sa_session_token';
-
-// Set to your server's address; for a physical device this must be a LAN IP
-// or public hostname, not localhost.
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
+export const API_BASE_URL = apiUrl;
 export const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
 
 // The session token from sign-in. It doesn't expire while the app is in use
 // (the server slides its expiry forward), so there's no refresh step: a 401
 // only ever means the session was ended for real.
-export function getToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(SESSION_TOKEN_KEY);
-}
-
-export function setToken(token: string): Promise<void> {
-  return SecureStore.setItemAsync(SESSION_TOKEN_KEY, token);
-}
-
-export function clearToken(): Promise<void> {
-  return SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
-}
+export const getToken = tokenStore.get;
+export const setToken = tokenStore.set;
+export const clearToken = tokenStore.clear;
 
 export class ApiError extends Error {
   status: number;

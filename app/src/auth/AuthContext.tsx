@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiJson, clearToken, getToken, setSignedOutHandler, setToken } from '../api/client';
 import { unregisterBackgroundLocationTask } from '../location/backgroundTask';
+import { startNotifications, stopNotifications } from '../notifications';
 
 export type User = { id: string; email: string; displayName: string };
 
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await clearToken();
     await AsyncStorage.removeItem(USER_CACHE_KEY).catch(() => {});
     await unregisterBackgroundLocationTask().catch(() => {});
+    await stopNotifications();
     setUser(null);
     setGhostModeState(false);
     setStatus('signedOut');
@@ -65,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (cached) setUser(JSON.parse(cached));
       setStatus('signedIn');
       refreshMe();
+      startNotifications().catch(() => {});
     })();
     return () => setSignedOutHandler(null);
   }, [refreshMe, signOutLocally]);
@@ -85,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(data.user);
         setStatus('signedIn');
         refreshMe();
+        startNotifications().catch(() => {});
         return 'signedIn';
       } catch (e) {
         if (e instanceof ApiError && e.body?.needsName) return 'needsName';

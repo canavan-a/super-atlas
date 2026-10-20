@@ -1,15 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, NativeModules, Platform } from 'react-native';
 
-import AppIcon from '../modules/app-icon';
 import type { ThemeName } from './theme';
 import { useTheme } from './theme';
 
 // The launcher icon follows the theme, as in super-badger and super-chat.
 // Android has no API to swap an app's icon directly; instead the manifest
 // declares one launcher entry per theme (an <activity-alias>, each with its
-// own icon, added by plugins/withAppIcon.js) and exactly one is enabled at a
-// time — see modules/app-icon. Elsewhere this is a no-op.
+// own icon, in android/app/src/main/AndroidManifest.xml) and exactly one is
+// enabled at a time — see AppIconModule.kt. Elsewhere this is a no-op.
+
+interface AppIconNative {
+  getIcon(): Promise<string>;
+  setIcon(name: string): Promise<boolean>;
+}
+
+const AppIcon = NativeModules.AppIcon as AppIconNative | undefined;
 
 /** The theme every install starts on, i.e. the alias enabled in the manifest. */
 export const DEFAULT_ICON: ThemeName = 'dark';

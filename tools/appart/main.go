@@ -10,12 +10,10 @@
 //
 //	app/src/logo/logoData.ts      the logo as tone-mapped vector runs
 //	app/src/logo/iconPalette.json per-theme colors
-//	app/plugins/res               adaptive + legacy launcher icons, one per
-//	                              theme, and the notification icon; the
-//	                              withAppIcon config plugin copies them into
-//	                              android/ on prebuild
-//	app/assets                    Expo's base icon images (dark theme, the
-//	                              app's default)
+//	app/android/app/src/main/res  adaptive + legacy launcher icons, one per
+//	                              theme, and the notification icon
+//	app/public                    the web build's favicon and icons (dark
+//	                              theme, the app's default)
 //
 // Theme colors are read from app/src/theme.tsx, never copied.
 package main
@@ -216,8 +214,8 @@ func main() {
 	must(writeLogoData(filepath.Join(*app, "src/logo/logoData.ts"), width, mark, word, slices, line))
 	icon := crop(word)
 	must(writePalette(filepath.Join(*app, "src/logo/iconPalette.json"), pals, icon))
-	must(writeAndroid(filepath.Join(*app, "plugins/res"), pals, icon))
-	must(writeExpoAssets(filepath.Join(*app, "assets"), pals["dark"], icon))
+	must(writeAndroid(filepath.Join(*app, "android/app/src/main/res"), pals, icon))
+	must(writeWebIcons(filepath.Join(*app, "public"), pals["dark"], icon))
 	if *preview != "" {
 		must(writePreviews(*preview, pals, mark, word, icon))
 	}
