@@ -25,7 +25,11 @@ func TestPushTokenGoesWithItsSession(t *testing.T) {
 	ctx := context.Background()
 	conn := testdb.Open(t)
 	mailer := &nopMailer{}
-	authSvc := auth.NewService(auth.NewStore(conn), mailer)
+	authStore := auth.NewStore(conn)
+	if err := authStore.Allow(ctx, "ada@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(authStore, mailer)
 	if err := authSvc.RequestCode(ctx, "ada@example.com"); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +62,11 @@ func TestNotifyReachesTheStream(t *testing.T) {
 	ctx := context.Background()
 	conn := testdb.Open(t)
 	mailer := &nopMailer{}
-	authSvc := auth.NewService(auth.NewStore(conn), mailer)
+	authStore := auth.NewStore(conn)
+	if err := authStore.Allow(ctx, "ada@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	authSvc := auth.NewService(authStore, mailer)
 	_ = authSvc.RequestCode(ctx, "ada@example.com")
 	user, token, err := authSvc.Verify(ctx, "ada@example.com", mailer.code, "Ada")
 	if err != nil {

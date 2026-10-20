@@ -19,15 +19,21 @@ type GhostModeGetter interface {
 type Handlers struct {
 	service   *Service
 	ghostMode GhostModeGetter
-	// One code per email per minute, however many IPs ask for it.
-	codesPerEmail *ratelimit.Limiter
+	// Per email, however many IPs ask: one code a minute and ten a day, and
+	// ten guesses an hour across all its codes (each code also allows only
+	// five), so a code can't be guessed by asking for new ones.
+	codesPerEmail      *ratelimit.Limiter
+	codesPerEmailDaily *ratelimit.Limiter
+	guessesPerEmail    *ratelimit.Limiter
 }
 
 func NewHandlers(service *Service, ghostMode GhostModeGetter) *Handlers {
 	return &Handlers{
-		service:       service,
-		ghostMode:     ghostMode,
-		codesPerEmail: ratelimit.New(1, time.Minute),
+		service:            service,
+		ghostMode:          ghostMode,
+		codesPerEmail:      ratelimit.New(1, time.Minute),
+		codesPerEmailDaily: ratelimit.New(10, 24*time.Hour),
+		guessesPerEmail:    ratelimit.New(10, time.Hour),
 	}
 }
 
@@ -51,6 +57,8 @@ func toUserResponse(u *User) userResponse {
 	return userResponse{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName}
 }
 
+const notAllowedMessage = "this email isn't on the Super Atlas guest list yet, ask whoever runs it to add you"
+
 type codeRequest struct {
 	Email string `json:"email"`
 }
@@ -63,13 +71,26 @@ func (h *Handlers) Code(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if !h.codesPerEmail.Allow(NormalizeEmail(req.Email)) {
+	email := NormalizeEmail(req.Email)
+	if !h.codesPerEmail.Allow(email) {
 		writeError(w, http.StatusTooManyRequests, "wait a minute before asking for another code")
+		return
+	}
+	if !h.codesPerEmailDaily.Allow(email) {
+		writeError(w, http.StatusTooManyRequests, "too many codes today, try again tomorrow")
 		return
 	}
 	if err := h.service.RequestCode(r.Context(), req.Email); err != nil {
 		if errors.Is(err, ErrInvalidEmail) {
 			writeError(w, http.StatusBadRequest, "enter a valid email")
+			return
+		}
+		if errors.Is(err, ErrNotAllowed) {
+			writeError(w, http.StatusForbidden, notAllowedMessage)
+			return
+		}
+		if errors.Is(err, ErrTooManyCodes) {
+			writeError(w, http.StatusTooManyRequests, "too many sign-ins right now, try again in a while")
 			return
 		}
 		writeError(w, http.StatusInternalServerError, "could not send code")
@@ -95,11 +116,17 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if !h.guessesPerEmail.Allow(NormalizeEmail(req.Email)) {
+		writeError(w, http.StatusTooManyRequests, "too many tries, wait a while and ask for a new code")
+		return
+	}
 	user, token, err := h.service.Verify(r.Context(), req.Email, req.Code, req.DisplayName)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCode):
 			writeError(w, http.StatusUnauthorized, "that code is wrong or expired")
+		case errors.Is(err, ErrNotAllowed):
+			writeError(w, http.StatusForbidden, notAllowedMessage)
 		case errors.Is(err, ErrNeedsName):
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "new account needs a name", "needsName": true})
 		default:

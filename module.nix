@@ -12,9 +12,17 @@ let
   cfg = config.services.superatlas;
   stateDir = "/var/lib/superatlas";
   serverBin = "${stateDir}/bin/superatlas-server";
+  adminBin = "${stateDir}/bin/superatlas-admin";
   goCache = "/var/cache/superatlas-go";
   npmCache = "/var/cache/superatlas-npm";
   webDir = "${stateDir}/web";
+
+  # `superatlas-admin allow <email>` etc. against the running service's
+  # database: who's allowed to sign in.
+  adminWrapper = pkgs.writeShellScriptBin "superatlas-admin" ''
+    export SUPERATLAS_DATA_DIR="${cfg.dataDir}"
+    exec ${pkgs.sudo}/bin/sudo -u superatlas -E ${adminBin} "$@"
+  '';
 in
 {
   options.services.superatlas = {
@@ -75,8 +83,10 @@ in
       description = ''
         File with the SMTP account sign-in codes are sent from:
         SUPERATLAS_SMTP_EMAIL=… and SUPERATLAS_SMTP_APP_PASSWORD=… (a Gmail
-        app password). Without it nobody can sign in. Give a runtime path as
-        a string, not a Nix path literal (which would copy it into the store).
+        app password). Without it nobody can sign in, and even with it only
+        emails added with `superatlas-admin allow <email>` get a code. Give
+        a runtime path as a string, not a Nix path literal (which would copy
+        it into the store).
       '';
     };
 
@@ -106,6 +116,8 @@ in
     };
     users.groups.superatlas = { };
 
+    environment.systemPackages = [ adminWrapper ];
+
     systemd.tmpfiles.rules = [
       "d ${stateDir} 0750 superatlas superatlas -"
       "d ${stateDir}/bin 0755 root root -"
@@ -128,6 +140,8 @@ in
         cd ${self}/server
         ${pkgs.go}/bin/go build -buildvcs=false -o ${serverBin}.new ./cmd/superatlas-server
         mv -f ${serverBin}.new ${serverBin}
+        ${pkgs.go}/bin/go build -buildvcs=false -o ${adminBin}.new ./cmd/superatlas-admin
+        mv -f ${adminBin}.new ${adminBin}
       '' + lib.optionalString cfg.web.enable ''
         # ${self}/app is in the read-only store and npm ci writes
         # node_modules into the project, so build from a scratch copy.

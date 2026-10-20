@@ -41,6 +41,15 @@ func NewRouter(d Deps) http.Handler {
 	limit := func(n int, per time.Duration) func(http.Handler) http.Handler {
 		return ratelimit.Middleware(ratelimit.New(n, per), byIP)
 	}
+	// Behind RequireAuth: per account, so a signed-in user can't get around
+	// it by changing IPs, and people behind one IP don't share a limit.
+	byUser := func(r *http.Request) string {
+		id, _ := auth.UserIDFromContext(r.Context())
+		return id
+	}
+	limitUser := func(n int, per time.Duration) func(http.Handler) http.Handler {
+		return ratelimit.Middleware(ratelimit.New(n, per), byUser)
+	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -56,27 +65,35 @@ func NewRouter(d Deps) http.Handler {
 	r.With(limit(60, time.Minute)).Get("/invites/{code}", d.FriendHandlers.InvitePreview)
 
 	r.Group(func(r chi.Router) {
+		// Ceilings on everything, per IP before checking the token (so junk
+		// tokens can't hammer the database) and per account after. The app
+		// makes a handful of calls a minute.
+		r.Use(limit(600, time.Minute))
 		r.Use(d.AuthService.RequireAuth)
+		r.Use(limitUser(300, time.Minute))
 
 		r.Get("/me", d.AuthHandlers.Me)
 		r.Post("/auth/logout", d.AuthHandlers.Logout)
 
 		r.Route("/friends", func(r chi.Router) {
 			r.Get("/", d.FriendHandlers.List)
-			r.Post("/", d.FriendHandlers.SendRequest)
+			// Each one notifies someone, and says whether an email has an
+			// account.
+			r.With(limitUser(20, time.Hour)).Post("/", d.FriendHandlers.SendRequest)
 			r.Get("/invite", d.FriendHandlers.Invite)
-			r.Post("/invite/reset", d.FriendHandlers.ResetInvite)
+			r.With(limitUser(10, time.Hour)).Post("/invite/reset", d.FriendHandlers.ResetInvite)
 			r.Post("/{id}/accept", d.FriendHandlers.Accept)
 			r.Delete("/{id}", d.FriendHandlers.Remove)
 		})
-		r.With(limit(30, 10*time.Minute)).Post("/invites/{code}/accept", d.FriendHandlers.AcceptInvite)
+		r.With(limit(30, 10*time.Minute), limitUser(30, time.Hour)).Post("/invites/{code}/accept", d.FriendHandlers.AcceptInvite)
 
-		r.Put("/push/token", d.NotifyHandlers.PutToken)
-		r.Get("/notifications/stream", d.NotifyHandlers.Stream)
+		r.With(limitUser(20, time.Hour)).Put("/push/token", d.NotifyHandlers.PutToken)
+		// Reconnects back off, so these only add up when something's wrong.
+		r.With(limitUser(30, time.Minute)).Get("/notifications/stream", d.NotifyHandlers.Stream)
 
 		r.Route("/locations", func(r chi.Router) {
-			r.Get("/stream", d.LocationHandlers.Stream)
-			r.Post("/batch", d.LocationHandlers.BatchIngest)
+			r.With(limitUser(30, time.Minute)).Get("/stream", d.LocationHandlers.Stream)
+			r.With(limitUser(60, time.Minute)).Post("/batch", d.LocationHandlers.BatchIngest)
 			r.Get("/snapshot", d.LocationHandlers.Snapshot)
 			r.Put("/pause", d.LocationHandlers.SetPaused)
 		})

@@ -12,7 +12,11 @@
 - [ ] iOS: not set up at all (no `ios/` project).
 
 ## Server (`server/`)
-- [x] Rate limiting on `/auth/*`.
+- [x] Invite-only sign-in: an email allowlist managed with `superatlas-admin`.
+- [x] Rate limiting: per IP on `/auth/*` and invites, per email on codes and guesses, an hourly cap on all codes sent, and per account on signed-in endpoints.
+- [ ] Keep session tokens out of the request log (the WebSocket streams pass them as `?token=`).
+- [ ] Size limits on request bodies and WebSocket messages, and server timeouts.
+- [ ] Build the web client without npm install scripts running as root (`module.nix`).
 - [x] FCM dispatch on friend events.
 - [x] `/me` endpoint.
 - [ ] Structured logging / error tracking (currently just chi's default request logger).

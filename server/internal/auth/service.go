@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canavan-a/super-atlas/server/internal/ratelimit"
 	"github.com/google/uuid"
 )
 
@@ -16,6 +17,8 @@ var (
 	ErrInvalidCode    = errors.New("invalid or expired code")
 	ErrNeedsName      = errors.New("display name required for a new account")
 	ErrInvalidSession = errors.New("invalid or expired session")
+	ErrNotAllowed     = errors.New("email isn't on the allowlist")
+	ErrTooManyCodes   = errors.New("too many sign-in codes sent")
 )
 
 const (
@@ -26,6 +29,10 @@ const (
 	// last_used_at/expires_at are rewritten at most this often per session,
 	// so ordinary requests don't each cost a database write.
 	sessionTouchEvery = time.Hour
+	// The most sign-in codes sent in an hour, to everyone together: a cap on
+	// what the server can make the mail account send, well under Gmail's
+	// daily limit.
+	codesPerHour = 100
 )
 
 // Mailer sends the sign-in code out of band; satisfied by mail.Sender.
@@ -37,22 +44,30 @@ type Service struct {
 	store  *Store
 	mailer Mailer
 	now    func() time.Time
+	sends  *ratelimit.Limiter
 }
 
 func NewService(store *Store, mailer Mailer) *Service {
-	return &Service{store: store, mailer: mailer, now: time.Now}
+	return &Service{store: store, mailer: mailer, now: time.Now, sends: ratelimit.New(codesPerHour, time.Hour)}
 }
 
 func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
-// RequestCode emails a fresh 6-digit code to email. It behaves the same
-// whether or not an account exists, since the same code also signs up.
+// RequestCode emails a fresh 6-digit code to email, if email is on the
+// allowlist (ErrNotAllowed otherwise, and nothing is sent). It behaves the
+// same whether or not an account exists, since the same code also signs up.
 func (s *Service) RequestCode(ctx context.Context, email string) error {
 	email = NormalizeEmail(email)
 	if !strings.Contains(email, "@") || len(email) > 254 {
 		return ErrInvalidEmail
+	}
+	if err := s.checkAllowed(ctx, email); err != nil {
+		return err
+	}
+	if !s.sends.Allow("all") {
+		return ErrTooManyCodes
 	}
 
 	code, err := generateCode()
@@ -72,6 +87,10 @@ func (s *Service) RequestCode(ctx context.Context, email string) error {
 func (s *Service) Verify(ctx context.Context, email, code, displayName string) (*User, string, error) {
 	email = NormalizeEmail(email)
 	displayName = strings.TrimSpace(displayName)
+	// Someone taken off the allowlist can't use a code they already had.
+	if err := s.checkAllowed(ctx, email); err != nil {
+		return nil, "", err
+	}
 
 	lc, err := s.store.LatestLoginCode(ctx, email)
 	if err != nil {
@@ -109,6 +128,17 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 		return nil, "", err
 	}
 	return user, token, nil
+}
+
+func (s *Service) checkAllowed(ctx context.Context, email string) error {
+	ok, err := s.store.IsAllowed(ctx, email)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotAllowed
+	}
+	return nil
 }
 
 func (s *Service) createUser(ctx context.Context, email, displayName string) (*User, error) {

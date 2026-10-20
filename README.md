@@ -9,8 +9,10 @@ screen and sideloaded Android APK) and runs on your own server.
   remove the other any time.
 - **One privacy switch.** Ghost mode hides you from everyone until you turn it
   off. That's the only setting there is.
-- **No passwords.** Sign in with a code emailed to you. A device stays signed
-  in until it's unused for 90 days or you sign out.
+- **Invite only, no passwords.** Whoever runs the server lists who may join
+  (`superatlas-admin allow <email>`); those people sign in with a code
+  emailed to them. A device stays signed in until it's unused for 90 days or
+  you sign out.
 - **Live, then periodic.** While the app is open your position streams to
   friends; while it's closed Android uploads one about every 15 minutes.
   Positions older than an hour are drawn faded.
@@ -39,6 +41,7 @@ module.nix  NixOS module: services.superatlas
 ```sh
 nix develop          # prints the dev commands
 dev-up               # server on 127.0.0.1:8080 (dev mode: sign-in codes go to the log)
+superatlas-admin allow you@example.com   # only listed emails can sign in
 run-app-web          # web client on :5173, talking to that server
 run-app-android      # on an emulator, which reaches the server at 10.0.2.2:8080
 run-tests            # Go tests and the app's typecheck
@@ -57,6 +60,9 @@ services.superatlas = {
 ```
 
 It listens on loopback; put a Cloudflare tunnel (or any TLS proxy) in front.
+Then let people in with `superatlas-admin allow <email>...` (also
+`remove <email>`, which signs them out everywhere, and `list`). Anyone with
+an account when the allowlist arrived is already on it.
 
 ## Releases
 

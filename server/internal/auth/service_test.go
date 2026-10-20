@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canavan-a/super-atlas/server/internal/db"
 	"github.com/canavan-a/super-atlas/server/internal/testdb"
 )
 
@@ -19,7 +20,13 @@ func (m *fakeMailer) SendLoginCode(to, code string) error {
 func newTestService(t *testing.T) (*Service, *fakeMailer, *time.Time) {
 	t.Helper()
 	mailer := &fakeMailer{codes: map[string]string{}}
-	svc := NewService(NewStore(testdb.Open(t)), mailer)
+	store := NewStore(testdb.Open(t))
+	for _, email := range []string{"ada@example.com", "a@b.co"} {
+		if err := store.Allow(context.Background(), email); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := NewService(store, mailer)
 	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	svc.now = func() time.Time { return now }
 	return svc, mailer, &now
@@ -156,5 +163,67 @@ func TestLogoutEndsOnlyThatSession(t *testing.T) {
 	}
 	if _, err := svc.Authenticate(ctx, tablet); err != nil {
 		t.Fatalf("other session: %v", err)
+	}
+}
+
+func TestOnlyAllowedEmailsSignIn(t *testing.T) {
+	ctx := context.Background()
+	svc, mailer, _ := newTestService(t)
+
+	if err := svc.RequestCode(ctx, "eve@example.com"); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("unlisted email: want ErrNotAllowed, got %v", err)
+	}
+	if _, sent := mailer.codes["eve@example.com"]; sent {
+		t.Fatal("a code was sent to an unlisted email")
+	}
+
+	// Taking someone off the list signs them out, and a code they already
+	// had stops working.
+	token := signUp(t, svc, mailer, "a@b.co", "A")
+	if err := svc.RequestCode(ctx, "a@b.co"); err != nil {
+		t.Fatal(err)
+	}
+	if listed, err := svc.store.Disallow(ctx, "a@b.co"); err != nil || !listed {
+		t.Fatalf("disallow: %v %v", listed, err)
+	}
+	if _, err := svc.Authenticate(ctx, token); !errors.Is(err, ErrInvalidSession) {
+		t.Fatalf("removed user's session: want ErrInvalidSession, got %v", err)
+	}
+	if _, _, err := svc.Verify(ctx, "a@b.co", mailer.codes["a@b.co"], ""); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("removed user's code: want ErrNotAllowed, got %v", err)
+	}
+
+	// Allowing them again restores the same account.
+	if err := svc.store.Allow(ctx, "a@b.co"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RequestCode(ctx, "a@b.co"); err != nil {
+		t.Fatal(err)
+	}
+	user, _, err := svc.Verify(ctx, "a@b.co", mailer.codes["a@b.co"], "")
+	if err != nil || user.DisplayName != "A" {
+		t.Fatalf("re-allowed: %+v %v", user, err)
+	}
+}
+
+func TestMigrationAllowsExistingAccounts(t *testing.T) {
+	// Roll the database back to before the allowlist, make an account, and
+	// run the migration again: that account must still be able to sign in.
+	ctx := context.Background()
+	conn := testdb.Open(t)
+	for _, stmt := range []string{
+		`DROP TABLE allowed_emails`,
+		`DELETE FROM schema_migrations WHERE name = '0007_allowlist.sql'`,
+		`INSERT INTO users (id, email, display_name) VALUES ('u1', 'old@example.com', 'Old')`,
+	} {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := NewStore(conn).IsAllowed(ctx, "old@example.com"); err != nil || !ok {
+		t.Fatalf("existing account: %v %v", ok, err)
 	}
 }

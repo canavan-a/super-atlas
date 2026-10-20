@@ -170,3 +170,64 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error 
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at < ?`, formatTime(now))
 	return err
 }
+
+// IsAllowed reports whether email (already normalized) is on the allowlist.
+func (s *Store) IsAllowed(ctx context.Context, email string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM allowed_emails WHERE email = ?`, email).Scan(&n)
+	return n > 0, err
+}
+
+// Allow adds email (already normalized) to the allowlist. Adding it twice is
+// a no-op.
+func (s *Store) Allow(ctx context.Context, email string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO allowed_emails (email) VALUES (?) ON CONFLICT(email) DO NOTHING`, email)
+	return err
+}
+
+// Disallow takes email (already normalized) off the allowlist and signs out
+// all of its account's sessions. The account and its friends stay, so
+// allowing the email again restores it. It reports whether email was listed.
+func (s *Store) Disallow(ctx context.Context, email string) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `DELETE FROM allowed_emails WHERE email = ?`, email)
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email) = ?)`, email); err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, tx.Commit()
+}
+
+// AllowedEmail is one allowlist entry, with the account's name once the
+// person has signed up.
+type AllowedEmail struct {
+	Email       string
+	DisplayName string
+}
+
+func (s *Store) ListAllowed(ctx context.Context) ([]AllowedEmail, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.email, COALESCE(u.display_name, '')
+		FROM allowed_emails a LEFT JOIN users u ON lower(u.email) = a.email
+		ORDER BY a.email`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AllowedEmail
+	for rows.Next() {
+		var a AllowedEmail
+		if err := rows.Scan(&a.Email, &a.DisplayName); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
