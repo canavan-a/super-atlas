@@ -81,12 +81,14 @@ if [[ -f "$APP_ENV_FILE" ]]; then
 fi
 if [[ -z "${SUPERATLAS_API_URL:-}" ]]; then
 	read -r -p "Server URL the app should use (e.g. https://atlas.example.com): " SUPERATLAS_API_URL
-	[[ "$SUPERATLAS_API_URL" =~ ^https?:// ]] || die "server URL must start with http:// or https://"
+	[[ "$SUPERATLAS_API_URL" == https://* ]] || die "server URL must start with https://"
 	printf 'SUPERATLAS_API_URL=%s\n' "$SUPERATLAS_API_URL" > "$APP_ENV_FILE"
 	info "saved to $APP_ENV_FILE"
 fi
 export SUPERATLAS_API_URL
-[[ "$SUPERATLAS_API_URL" == https://* ]] || warn "server URL isn't https: invite links won't open the app directly"
+# Release builds refuse plain http (Android blocks cleartext traffic), and
+# invite links only open the app from an https host.
+[[ "$SUPERATLAS_API_URL" == https://* ]] || die "SUPERATLAS_API_URL in $APP_ENV_FILE must be an https URL"
 info "server: $SUPERATLAS_API_URL"
 
 # ---------------------------------------------------------------------------
