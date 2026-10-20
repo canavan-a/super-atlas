@@ -10,8 +10,9 @@ import (
 type contextKey string
 
 const (
-	userIDContextKey contextKey = "userID"
-	tokenContextKey  contextKey = "token"
+	userIDContextKey    contextKey = "userID"
+	tokenContextKey     contextKey = "token"
+	sessionIDContextKey contextKey = "sessionID"
 )
 
 func (s *Service) RequireAuth(next http.Handler) http.Handler {
@@ -28,7 +29,7 @@ func (s *Service) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		userID, err := s.Authenticate(r.Context(), token)
+		sess, err := s.session(r.Context(), token)
 		if err != nil {
 			if errors.Is(err, ErrInvalidSession) {
 				writeError(w, http.StatusUnauthorized, "signed out")
@@ -38,7 +39,8 @@ func (s *Service) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDContextKey, userID)
+		ctx := context.WithValue(r.Context(), userIDContextKey, sess.UserID)
+		ctx = context.WithValue(ctx, sessionIDContextKey, sess.ID)
 		ctx = context.WithValue(ctx, tokenContextKey, token)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -47,6 +49,13 @@ func (s *Service) RequireAuth(next http.Handler) http.Handler {
 // UserIDFromContext returns the authenticated user's ID, set by RequireAuth.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	id, ok := ctx.Value(userIDContextKey).(string)
+	return id, ok
+}
+
+// SessionIDFromContext returns the ID of the session the request was made
+// with, set by RequireAuth.
+func SessionIDFromContext(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(sessionIDContextKey).(string)
 	return id, ok
 }
 

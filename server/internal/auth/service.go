@@ -139,24 +139,32 @@ func (s *Service) createSession(ctx context.Context, userID string) (string, err
 // Authenticate resolves a session token to its user, sliding the session's
 // expiry forward as it's used.
 func (s *Service) Authenticate(ctx context.Context, token string) (string, error) {
+	sess, err := s.session(ctx, token)
+	if err != nil {
+		return "", err
+	}
+	return sess.UserID, nil
+}
+
+func (s *Service) session(ctx context.Context, token string) (*Session, error) {
 	sess, err := s.store.GetSessionByHash(ctx, HashToken(token))
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return "", ErrInvalidSession
+			return nil, ErrInvalidSession
 		}
-		return "", err
+		return nil, err
 	}
 	now := s.now()
 	if now.After(sess.ExpiresAt) {
 		_ = s.store.DeleteSession(ctx, sess.ID)
-		return "", ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 	if now.Sub(sess.LastUsedAt) > sessionTouchEvery {
 		if err := s.store.TouchSession(ctx, sess.ID, now, now.Add(sessionIdleTTL)); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
-	return sess.UserID, nil
+	return sess, nil
 }
 
 // Logout ends the session for token. Unknown tokens are a no-op.

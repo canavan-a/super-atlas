@@ -20,13 +20,38 @@ var (
 	ErrInvalidInvite  = errors.New("invite link is invalid")
 )
 
+// Notifier tells someone about a friend event (implemented by the notify
+// package; declared here so friends doesn't depend on it).
+type Notifier interface {
+	Notify(userID, title, body string)
+}
+
 type Service struct {
 	store     *Store
 	authStore *auth.Store
+	// notifier is nil when nothing should be told (tests, larp).
+	notifier Notifier
 }
 
-func NewService(store *Store, authStore *auth.Store) *Service {
-	return &Service{store: store, authStore: authStore}
+func NewService(store *Store, authStore *auth.Store, notifier Notifier) *Service {
+	return &Service{store: store, authStore: authStore, notifier: notifier}
+}
+
+// notify sends to toID about fromID; failures to look up the name are
+// ignored, since a notification is never worth failing the request over.
+func (s *Service) notify(toID, fromID string, pending bool) {
+	if s.notifier == nil {
+		return
+	}
+	from, err := s.authStore.GetUserByID(context.Background(), fromID)
+	if err != nil {
+		return
+	}
+	if pending {
+		s.notifier.Notify(toID, from.DisplayName+" wants to be friends", "Open Super Atlas to accept.")
+	} else {
+		s.notifier.Notify(toID, from.DisplayName+" is now your friend", "You can see each other on the map.")
+	}
 }
 
 // SendRequest creates a pending friendship from requesterID to the user with
@@ -51,6 +76,7 @@ func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeEmail s
 			if err := s.store.Accept(ctx, existing.ID); err != nil {
 				return nil, err
 			}
+			s.notify(addressee.ID, requesterID, false)
 			return s.store.GetByID(ctx, existing.ID)
 		}
 		return nil, ErrAlreadyExists
@@ -62,6 +88,7 @@ func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeEmail s
 	if err := s.store.Create(ctx, id, requesterID, addressee.ID); err != nil {
 		return nil, err
 	}
+	s.notify(addressee.ID, requesterID, true)
 	return s.store.GetByID(ctx, id)
 }
 
@@ -76,7 +103,11 @@ func (s *Service) Accept(ctx context.Context, friendshipID, userID string) error
 	if f.Status != "pending" {
 		return ErrNotPending
 	}
-	return s.store.Accept(ctx, friendshipID)
+	if err := s.store.Accept(ctx, friendshipID); err != nil {
+		return err
+	}
+	s.notify(f.RequesterID, userID, false)
+	return nil
 }
 
 // Remove handles declining or cancelling a pending request and removing an
@@ -148,6 +179,7 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, code string) (string
 			if err := s.store.Accept(ctx, existing.ID); err != nil {
 				return "", err
 			}
+			s.notify(ownerID, userID, false)
 		}
 		return ownerName, nil
 	case !errors.Is(err, ErrNotFound):
@@ -161,6 +193,7 @@ func (s *Service) AcceptInvite(ctx context.Context, userID, code string) (string
 	if err := s.store.Accept(ctx, id); err != nil {
 		return "", err
 	}
+	s.notify(ownerID, userID, false)
 	return ownerName, nil
 }
 

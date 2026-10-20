@@ -8,7 +8,9 @@ import (
 	"github.com/canavan-a/super-atlas/server/internal/config"
 	"github.com/canavan-a/super-atlas/server/internal/friends"
 	"github.com/canavan-a/super-atlas/server/internal/location"
+	"github.com/canavan-a/super-atlas/server/internal/notify"
 	"github.com/canavan-a/super-atlas/server/internal/ratelimit"
+	"github.com/canavan-a/super-atlas/server/internal/static"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -20,6 +22,7 @@ type Deps struct {
 	FriendService    *friends.Service
 	FriendHandlers   *friends.Handlers
 	LocationHandlers *location.Handlers
+	NotifyHandlers   *notify.Handlers
 }
 
 // InviteURL is the link builder friends.Handlers needs; exposed so main can
@@ -43,7 +46,7 @@ func NewRouter(d Deps) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	r.With(limit(60, time.Minute)).Get("/i/{code}", landing(d.FriendService))
+	r.With(limit(60, time.Minute)).Get("/i/{code}", landing(d.FriendService, d.Config.WebDir != ""))
 	r.Get("/.well-known/assetlinks.json", assetLinks(d.Config.AndroidCertSHA256))
 
 	r.Route("/auth", func(r chi.Router) {
@@ -68,6 +71,9 @@ func NewRouter(d Deps) http.Handler {
 		})
 		r.With(limit(30, 10*time.Minute)).Post("/invites/{code}/accept", d.FriendHandlers.AcceptInvite)
 
+		r.Put("/push/token", d.NotifyHandlers.PutToken)
+		r.Get("/notifications/stream", d.NotifyHandlers.Stream)
+
 		r.Route("/locations", func(r chi.Router) {
 			r.Get("/stream", d.LocationHandlers.Stream)
 			r.Post("/batch", d.LocationHandlers.BatchIngest)
@@ -75,6 +81,11 @@ func NewRouter(d Deps) http.Handler {
 			r.Put("/pause", d.LocationHandlers.SetPaused)
 		})
 	})
+
+	// The web client, when it's been built and configured.
+	if d.Config.WebDir != "" {
+		r.NotFound(static.Handler(d.Config.WebDir).ServeHTTP)
+	}
 
 	return r
 }

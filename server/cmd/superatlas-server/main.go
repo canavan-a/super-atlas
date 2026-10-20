@@ -15,6 +15,8 @@ import (
 	"github.com/canavan-a/super-atlas/server/internal/larp"
 	"github.com/canavan-a/super-atlas/server/internal/location"
 	"github.com/canavan-a/super-atlas/server/internal/mail"
+	"github.com/canavan-a/super-atlas/server/internal/notify"
+	"github.com/canavan-a/super-atlas/server/internal/push"
 )
 
 func main() {
@@ -43,8 +45,23 @@ func main() {
 	authService := auth.NewService(authStore, mailer)
 	go authService.RunJanitor(ctx)
 
+	// Friend notifications: the sideload app's background connection, plus
+	// FCM for the Google Play build when a Firebase key is configured.
+	var fcm *push.FCM
+	if cfg.FCMCredentialsFile != "" {
+		key, err := os.ReadFile(cfg.FCMCredentialsFile)
+		if err != nil {
+			log.Fatalf("reading SUPERATLAS_FCM_CREDENTIALS_FILE: %v", err)
+		}
+		if fcm, err = push.New(key); err != nil {
+			log.Fatalf("FCM: %v", err)
+		}
+		log.Printf("push: FCM notifications on")
+	}
+	notifyService := notify.NewService(notify.NewStore(conn), fcm)
+
 	friendStore := friends.NewStore(conn)
-	friendService := friends.NewService(friendStore, authStore)
+	friendService := friends.NewService(friendStore, authStore, notifyService)
 
 	hub := location.NewHub()
 	locationStore := location.NewStore(conn)
@@ -64,6 +81,7 @@ func main() {
 		FriendService:    friendService,
 		FriendHandlers:   friends.NewHandlers(friendService, larpToggler, httpapi.InviteURL(cfg)),
 		LocationHandlers: locationHandlers,
+		NotifyHandlers:   notify.NewHandlers(notifyService),
 	})
 
 	log.Printf("superatlas listening on %s", cfg.ListenAddr)

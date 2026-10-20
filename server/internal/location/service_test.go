@@ -23,7 +23,7 @@ func newWorld(t *testing.T) *world {
 	authStore := auth.NewStore(conn)
 	friendStore := friends.NewStore(conn)
 	return &world{
-		friends:  friends.NewService(friendStore, authStore),
+		friends:  friends.NewService(friendStore, authStore, nil),
 		location: NewService(NewStore(conn), friendStore, NewHub()),
 		auth:     authStore,
 	}

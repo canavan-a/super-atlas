@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"html/template"
 	"net/http"
+	"net/url"
 
 	"github.com/canavan-a/super-atlas/server/internal/friends"
 	"github.com/go-chi/chi/v5"
@@ -32,7 +33,7 @@ func inviteURLFunc(publicOrigin string) func(r *http.Request, code string) strin
 
 // landing is what an invite link opens when the app isn't installed or the
 // link wasn't routed to it.
-func landing(svc *friends.Service) http.HandlerFunc {
+func landing(svc *friends.Service, hasWeb bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := chi.URLParam(r, "code")
 		name, err := svc.InviteOwner(r.Context(), code)
@@ -47,6 +48,8 @@ func landing(svc *friends.Service) http.HandlerFunc {
 			"Name":     name,
 			"AppLink":  template.URL("superatlas://invite/" + code),
 			"Download": latestRelease,
+			"Web":      hasWeb,
+			"WebLink":  "/?invite=" + url.QueryEscape(code),
 		})
 	}
 }
@@ -73,6 +76,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
   <p>Open this in the app to add them. You'll see each other on the map.</p>
   <a href="{{.AppLink}}">Open in Super Atlas</a>
   <a class="secondary" href="{{.Download}}">Get the app</a>
+  {{if .Web}}<a class="secondary" href="{{.WebLink}}">Open on the web</a>{{end}}
 {{else}}
   <h1>This invite link doesn't work anymore</h1>
   <p>Ask your friend to send you a new one.</p>
