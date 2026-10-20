@@ -1,42 +1,50 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { Icon } from '../components/Icon';
+import { ensureBackgroundLocationTask } from '../location/backgroundTask';
 import { usePermissionsGate } from '../location/usePermissionsGate';
-import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import FriendsScreen from '../screens/FriendsScreen';
-import LoginScreen from '../screens/LoginScreen';
 import MapScreen from '../screens/MapScreen';
 import PermissionsGateScreen from '../screens/PermissionsGateScreen';
-import SignupScreen from '../screens/SignupScreen';
-import { colors } from '../theme/colors';
+import SettingsScreen from '../screens/SettingsScreen';
+import SignInScreen from '../screens/SignInScreen';
+import { useTheme } from '../theme';
 
 const Stack = createNativeStackNavigator();
 
+// Five screens in all: Sign in, Permissions, Map (home), Friends, Settings.
 export default function RootNavigator() {
-  const { status, logout } = useAuth();
+  const theme = useTheme();
+  const { status } = useAuth();
   const permissions = usePermissionsGate();
+
+  useEffect(() => {
+    if (status === 'signedIn' && permissions.allGranted) {
+      ensureBackgroundLocationTask().catch(() => {});
+    }
+  }, [status, permissions.allGranted]);
 
   if (status === 'loading' || permissions.loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={colors.accent} />
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.primary} />
       </View>
     );
   }
 
   const screenOptions = {
-    headerStyle: { backgroundColor: colors.background },
-    headerTintColor: colors.text,
+    headerStyle: { backgroundColor: theme.bg },
+    headerTintColor: theme.text,
     headerShadowVisible: false,
-    contentStyle: { backgroundColor: colors.background },
+    contentStyle: { backgroundColor: theme.bg },
   };
 
   if (status === 'signedOut') {
     return (
       <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <Stack.Screen name="SignIn" component={SignInScreen} />
       </Stack.Navigator>
     );
   }
@@ -51,29 +59,19 @@ export default function RootNavigator() {
 
   return (
     <Stack.Navigator screenOptions={screenOptions}>
+      <Stack.Screen name="Map" component={MapScreen} options={{ headerShown: false }} />
       <Stack.Screen
-        name="Map"
-        component={MapScreen}
+        name="Friends"
+        component={FriendsScreen}
         options={({ navigation }) => ({
-          title: 'Open Location',
           headerRight: () => (
-            <Pressable onPress={() => navigation.navigate('Friends')} hitSlop={8}>
-              <Text style={{ color: colors.accent, fontWeight: '600' }}>Friends</Text>
+            <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={10} accessibilityLabel="Settings">
+              <Icon name="gear" color={theme.text} size={22} />
             </Pressable>
           ),
         })}
       />
-      <Stack.Screen
-        name="Friends"
-        component={FriendsScreen}
-        options={{
-          headerRight: () => (
-            <Pressable onPress={() => logout()} hitSlop={8}>
-              <Text style={{ color: colors.danger, fontWeight: '600' }}>Sign out</Text>
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
   );
 }

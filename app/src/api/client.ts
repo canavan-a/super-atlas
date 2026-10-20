@@ -1,85 +1,58 @@
 import * as SecureStore from 'expo-secure-store';
 
-const ACCESS_TOKEN_KEY = 'ol_access_token';
-const REFRESH_TOKEN_KEY = 'ol_refresh_token';
+const SESSION_TOKEN_KEY = 'sa_session_token';
 
 // Set to your server's address; for a physical device this must be a LAN IP
 // or public hostname, not localhost.
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
 export const WS_BASE_URL = API_BASE_URL.replace(/^http/, 'ws');
 
-export async function getTokens() {
-  const [accessToken, refreshToken] = await Promise.all([
-    SecureStore.getItemAsync(ACCESS_TOKEN_KEY),
-    SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
-  ]);
-  return { accessToken, refreshToken };
+// The session token from sign-in. It doesn't expire while the app is in use
+// (the server slides its expiry forward), so there's no refresh step: a 401
+// only ever means the session was ended for real.
+export function getToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(SESSION_TOKEN_KEY);
 }
 
-export async function setTokens(accessToken: string, refreshToken: string) {
-  await Promise.all([
-    SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
-    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
-  ]);
+export function setToken(token: string): Promise<void> {
+  return SecureStore.setItemAsync(SESSION_TOKEN_KEY, token);
 }
 
-export async function clearTokens() {
-  await Promise.all([
-    SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
-    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
-  ]);
+export function clearToken(): Promise<void> {
+  return SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  body: any;
+  constructor(status: number, message: string, body?: any) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
-let refreshPromise: Promise<string | null> | null = null;
+let onSignedOut: (() => void) | null = null;
 
-async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken } = await getTokens();
-  if (!refreshToken) return null;
-
-  const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
-  if (!res.ok) {
-    await clearTokens();
-    return null;
-  }
-  const data = await res.json();
-  await setTokens(data.accessToken, data.refreshToken);
-  return data.accessToken as string;
+// AuthContext registers this so any request that finds the session gone
+// drops the app back to sign-in.
+export function setSignedOutHandler(handler: (() => void) | null) {
+  onSignedOut = handler;
 }
 
-// apiFetch attaches the access token and transparently retries once after a
-// refresh if the server says the token expired.
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const { accessToken } = await getTokens();
-  const doFetch = (token: string | null) =>
-    fetch(`${API_BASE_URL}${path}`, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...init.headers,
-      },
-    });
-
-  let res = await doFetch(accessToken);
-  if (res.status === 401) {
-    refreshPromise ??= refreshAccessToken().finally(() => {
-      refreshPromise = null;
-    });
-    const newToken = await refreshPromise;
-    if (!newToken) throw new ApiError(401, 'session expired');
-    res = await doFetch(newToken);
+  const token = await getToken();
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init.headers,
+    },
+  });
+  if (res.status === 401 && token) {
+    await clearToken();
+    onSignedOut?.();
   }
   return res;
 }
@@ -88,7 +61,7 @@ export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<
   const res = await apiFetch(path, init);
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error ?? 'request failed');
+    throw new ApiError(res.status, body.error ?? 'request failed', body);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
