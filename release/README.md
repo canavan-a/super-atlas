@@ -89,4 +89,5 @@ at 100, above the sideload builds', so the two never collide. Upload the
 `.aab` in the Play Console (Testing → Internal testing is the place to start).
 
 Assumes `git`, `java`, `node`, the Android SDK, and `gh` (authenticated, for
-sideload releases) are installed — all in this repo's `nix develop` shell.
+sideload releases). `nix develop` provides node and gh; the JDK and Android
+SDK come from the system, as for super-chat.
