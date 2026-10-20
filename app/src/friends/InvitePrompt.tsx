@@ -1,25 +1,17 @@
-import * as Linking from 'expo-linking';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Overlay } from '../components/Overlay';
 import { Button } from '../components/ui';
+import { useIncomingInviteCode } from './incomingInvite';
 import { Theme, useThemedStyles } from '../theme';
-
-// Pulls the invite code out of superatlas://invite/<code> or
-// https://<server>/i/<code>.
-export function inviteCodeFromURL(url: string | null): string | null {
-  if (!url) return null;
-  const match = url.match(/(?:\/\/invite\/|\/i\/)([a-z0-9]+)/i);
-  return match ? match[1].toLowerCase() : null;
-}
 
 // Asks "Add <name> as a friend?" when the app is opened from an invite link.
 // If you aren't signed in yet, the code waits in memory until you are.
 export function InvitePrompt() {
   const styles = useThemedStyles(makeStyles);
-  const url = Linking.useLinkingURL();
+  const incoming = useIncomingInviteCode();
   const { status } = useAuth();
   const [code, setCode] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
@@ -28,14 +20,13 @@ export function InvitePrompt() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const next = inviteCodeFromURL(url);
-    if (next) {
-      setCode(next);
+    if (incoming) {
+      setCode(incoming);
       setName(null);
       setError(null);
       setDone(false);
     }
-  }, [url]);
+  }, [incoming]);
 
   useEffect(() => {
     if (!code || status !== 'signedIn' || name || error) return;

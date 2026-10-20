@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, FlatList, Pressable, Share, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { Button, Card, TextField } from '../components/ui';
 import { Friend, useFriends } from '../friends/useFriends';
+import { shareInvite } from '../friends/shareInvite';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { timeAgo } from '../time';
 
@@ -26,7 +27,8 @@ export default function FriendsScreen() {
     setSharing(true);
     try {
       const { url } = await apiJson<{ url: string }>('/friends/invite');
-      await Share.share({ message: `Add me on Super Atlas so we can see each other on the map: ${url}` });
+      const note = await shareInvite(url);
+      if (note) setNotice({ text: note });
     } catch (e: any) {
       setNotice({ text: e.message ?? 'Could not load your invite link', error: true });
     } finally {
