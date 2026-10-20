@@ -2,28 +2,24 @@
 
 ## App (`app/`)
 - [ ] Offline map tiles: prefetch/cache a region with MapLibre's offline manager, add a "download this area" action, and optionally auto-refresh cached tiles on wifi. Render cached last-known friend positions on top when there's no connection.
-- [ ] Resolve friend display name/avatar on the map (marker tap currently just shows "Friend" + last-seen time — needs to cross-reference the friends list by `userId`).
-- [ ] App icons, splash screen, adaptive icon assets (currently placeholder Expo defaults).
-- [x] Link project to EAS (`extra.eas.projectId` set in `app.json`).
-- [ ] Fill in EAS Build/Submit config (`eas.json`) for iOS + Android.
-- [ ] Real device testing of background location task (`expo-background-task`) — simulators don't reliably exercise OS background scheduling.
-- [ ] Handle the case where a user permanently denies a permission (Settings deep-link prompt) instead of just re-showing the request button.
-- [ ] `/me` endpoint + call it on app launch to validate the stored access token belongs to a real, still-existing account (currently we just check "is there a token").
-- [ ] Push notifications: register device token with server, send on incoming friend request (`expo-notifications` permission is requested but nothing sends a push yet).
+- [x] Resolve friend display names on the map (names now come with every location).
+- [x] App icons, splash screen, adaptive icon assets (pixel art from `art/`, one launcher icon per theme).
+- [ ] Real device testing: background location task, the sideload notification service across reboots, the in-app updater, and both flavors' notifications. Nothing has run on a device yet.
+- [x] Handle a permanently denied permission (the gate's button opens Settings).
+- [x] `/me` on launch.
+- [x] Notifications on friend requests (sideload: background connection; Play: FCM).
 - [ ] Loading/error states polish (friends list, map) and pull-to-refresh.
+- [ ] iOS: not set up at all (no `ios/` project).
 
 ## Server (`server/`)
-- [ ] Rate limiting on `/auth/*` (signup/login) to blunt brute-force and enumeration.
-- [ ] Push notification dispatch (APNs/FCM) on friend request events.
-- [ ] `/me` endpoint for token validation on app launch.
+- [x] Rate limiting on `/auth/*`.
+- [x] FCM dispatch on friend events.
+- [x] `/me` endpoint.
 - [ ] Structured logging / error tracking (currently just chi's default request logger).
-- [ ] Config for CORS if a web client is ever added.
-- [ ] Deployment: containerize (Dockerfile), decide on host, and set up SQLite file backups (single-file DB, so backup = copy the file + WAL).
-- [ ] Tests: only manually verified so far via curl; no automated Go test suite yet.
+- [ ] SQLite backups (single-file DB, so backup = copy the file + WAL).
+- [x] Go test suite (auth, friends, locations, notifications, push).
 
 ## Store shipping
-- [ ] Privacy policy page (required by both stores for a precise-location app) — can be a static page in this repo.
-- [ ] Apple: App Store Connect account, background-location justification in review notes, privacy nutrition label.
-- [ ] Google Play: $25 dev account, Sensitive App Permissions declaration, prominent in-app disclosure before requesting "Allow all the time".
-- [ ] EAS Build + EAS Submit pipeline for both platforms.
-
+- [ ] Privacy policy page (required by Google Play for a precise-location app); could be a page of the web build, as super-chat's `/privacy`.
+- [ ] Firebase project + `google_services.xml` values + the server's service-account key (see `release/README.md`).
+- [ ] Google Play: dev account, Sensitive App Permissions declaration for background location, prominent in-app disclosure before requesting "Allow all the time".
