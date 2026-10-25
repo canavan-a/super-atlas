@@ -1,16 +1,21 @@
 package config
 
 import (
+	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	ListenAddr      string
-	DatabasePath    string
+	ListenAddr   string
+	DatabasePath string
+	// SMTPHost and SMTPPort pick the mail server; Gmail by default.
+	SMTPHost        string
+	SMTPPort        int
 	SMTPEmail       string
 	SMTPAppPassword string
 	// PublicOrigin is the externally reachable base URL (e.g.
@@ -42,6 +47,8 @@ func Load() *Config {
 	return &Config{
 		ListenAddr:         getEnv("SUPERATLAS_LISTEN_ADDR", ":8080"),
 		DatabasePath:       getEnv("SUPERATLAS_DB_PATH", filepath.Join(dataDir, "superatlas.db")),
+		SMTPHost:           getEnv("SUPERATLAS_SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:           getEnvInt("SUPERATLAS_SMTP_PORT", 587),
 		SMTPEmail:          os.Getenv("SUPERATLAS_SMTP_EMAIL"),
 		SMTPAppPassword:    os.Getenv("SUPERATLAS_SMTP_APP_PASSWORD"),
 		PublicOrigin:       strings.TrimRight(os.Getenv("SUPERATLAS_PUBLIC_ORIGIN"), "/"),
@@ -58,6 +65,18 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("%s: not a number: %q", key, v)
+	}
+	return n
 }
 
 func splitList(s string) []string {

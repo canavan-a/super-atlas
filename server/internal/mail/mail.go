@@ -7,8 +7,11 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
-// Sender sends transactional email via Gmail SMTP using an app password.
+// Sender sends transactional email over SMTP (Gmail by default) using an
+// app password.
 type Sender struct {
+	host        string
+	port        int
 	email       string
 	appPassword string
 	// logCodes prints codes to the server log instead of failing when SMTP
@@ -16,8 +19,8 @@ type Sender struct {
 	logCodes bool
 }
 
-func NewSender(email, appPassword string, logCodes bool) *Sender {
-	return &Sender{email: email, appPassword: appPassword, logCodes: logCodes}
+func NewSender(host string, port int, email, appPassword string, logCodes bool) *Sender {
+	return &Sender{host: host, port: port, email: email, appPassword: appPassword, logCodes: logCodes}
 }
 
 func (s *Sender) SendLoginCode(to, code string) error {
@@ -39,7 +42,7 @@ func (s *Sender) SendLoginCode(to, code string) error {
         <p>It's valid for 10 minutes. If you didn't ask for it, you can ignore this email.</p>
     `, code))
 
-	d := gomail.NewDialer("smtp.gmail.com", 587, s.email, s.appPassword)
+	d := gomail.NewDialer(s.host, s.port, s.email, s.appPassword)
 	if err := d.DialAndSend(m); err != nil {
 		return fmt.Errorf("smtp send: %w", err)
 	}

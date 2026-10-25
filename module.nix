@@ -82,8 +82,9 @@ in
       example = "/run/secrets/superatlas.env";
       description = ''
         File with the SMTP account sign-in codes are sent from:
-        SUPERATLAS_SMTP_EMAIL=… and SUPERATLAS_SMTP_APP_PASSWORD=… (a Gmail
-        app password). Without it nobody can sign in, and even with it only
+        SUPERATLAS_SMTP_EMAIL=… and SUPERATLAS_SMTP_APP_PASSWORD=… (an app
+        password), plus SUPERATLAS_SMTP_HOST=… and SUPERATLAS_SMTP_PORT=…
+        for anything but Gmail (default smtp.gmail.com, 587). Without it nobody can sign in, and even with it only
         emails added with `superatlas-admin allow <email>` get a code. Give
         a runtime path as a string, not a Nix path literal (which would copy
         it into the store).

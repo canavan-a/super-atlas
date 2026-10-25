@@ -36,7 +36,7 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	mailer := mail.NewSender(cfg.SMTPEmail, cfg.SMTPAppPassword, cfg.Dev)
+	mailer := mail.NewSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPEmail, cfg.SMTPAppPassword, cfg.Dev)
 	if (cfg.SMTPEmail == "" || cfg.SMTPAppPassword == "") && !cfg.Dev {
 		log.Printf("warning: SMTP isn't configured, so nobody can sign in")
 	}

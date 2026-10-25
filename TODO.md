@@ -3,7 +3,7 @@
 ## Deploy (the superchat host, `/etc/nixos`)
 - [x] `services.superatlas` in `modules/superchat.nix` (127.0.0.1:8090, `https://atlas.superbadger.io`, web client on) and the `super-atlas` flake input.
 - [ ] Push this repo, then `nix flake update super-atlas` in `/etc/nixos` so the host picks up the allowlist.
-- [ ] Put the Gmail login on the box: `/etc/superatlas/env` with `SUPERATLAS_SMTP_EMAIL` and `SUPERATLAS_SMTP_APP_PASSWORD` (the service won't start without it).
+- [ ] Put the mail login on the box: `/etc/superatlas/env` with `SUPERATLAS_SMTP_EMAIL` and `SUPERATLAS_SMTP_APP_PASSWORD`, plus `SUPERATLAS_SMTP_HOST`/`_PORT` if not Gmail (e.g. `smtp.zoho.com`/`587`) (the service won't start without it).
 - [ ] Cloudflare tunnel: route `atlas.superbadger.io` → `http://localhost:8090`.
 - [ ] Deploy, check port 8090 is free first (`sudo ss -ltnp | grep 8090`), then `superatlas-admin allow <email>` for each person.
 - [ ] After `release/gen-keystore.sh`, put the key's SHA-256 in `androidCertSha256` so invite links open the app.
@@ -26,7 +26,7 @@
 - [x] FCM dispatch on friend events.
 - [x] `/me` endpoint.
 - [x] Go test suite (auth, friends, locations, notifications, push, allowlist).
-- [ ] Configurable SMTP (`SUPERATLAS_SMTP_HOST`/`_PORT`/`_FROM`, Gmail by default), so codes can come from a relay like Resend, Postmark or SES on your own domain. It's hard-coded to `smtp.gmail.com:587` now.
+- [x] Configurable SMTP host and port (`SUPERATLAS_SMTP_HOST`/`_PORT`, Gmail by default), e.g. Zoho or a relay on your own domain.
 - [ ] SQLite backups (single-file DB, so backup = copy the file + WAL).
 - [ ] Structured logging / error tracking (currently just chi's default request logger).
 
