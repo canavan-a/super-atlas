@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Button, TextField } from '../components/ui';
+import { useSplashDone } from '../logo/SplashGate';
 import { Theme, useThemedStyles } from '../theme';
 
 const RESEND_AFTER_S = 60;
@@ -19,6 +20,14 @@ export default function SignInScreen() {
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const codeRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const splashDone = useSplashDone();
+
+  // Instead of autoFocus: this screen sits under the launch splash, and an
+  // early focus would pop the keyboard up over the logo.
+  useEffect(() => {
+    if (splashDone && step === 'email') emailRef.current?.focus();
+  }, [splashDone, step]);
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -72,11 +81,11 @@ export default function SignInScreen() {
         <>
           <Text style={styles.subtitle}>See your friends on a map. Enter your email and we'll send you a code.</Text>
           <TextField
+            ref={emailRef}
             placeholder="you@example.com"
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
-            autoFocus
             value={email}
             onChangeText={setEmail}
             onSubmitEditing={sendCode}

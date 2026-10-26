@@ -14,10 +14,37 @@ import {splashHold} from './splashHold';
 // Module-level so a remount (e.g. a fast refresh, or the tree being rebuilt
 // after a config change) doesn't replay it; a fresh launch is a fresh process.
 let played = false;
+const playedListeners = new Set<() => void>();
+
+function markPlayed(): void {
+  played = true;
+  playedListeners.forEach(l => l());
+}
 
 /** For tests: forget that the splash has played. */
 export function resetSplashForTests(): void {
   played = false;
+}
+
+/**
+ * True once the splash is out of the way (finished, skipped or failed). The
+ * app renders under the splash, so screens use this to hold off on things
+ * like focusing a text field, which would pop the keyboard up over the logo.
+ */
+export function useSplashDone(): boolean {
+  const [done, setDone] = useState(played);
+  useEffect(() => {
+    if (played) {
+      setDone(true);
+      return;
+    }
+    const l = () => setDone(true);
+    playedListeners.add(l);
+    return () => {
+      playedListeners.delete(l);
+    };
+  }, []);
+  return done;
 }
 
 type Phase = 'wait' | 'play' | 'done';
@@ -52,7 +79,7 @@ export function SplashGate({children}: {children: React.ReactNode}): React.JSX.E
     if (phase !== 'wait') return;
     let alive = true;
     const skipToApp = () => {
-      played = true;
+      markPlayed();
       setPhase('done');
     };
     settingsStore
@@ -85,7 +112,7 @@ export function SplashGate({children}: {children: React.ReactNode}): React.JSX.E
       {phase === 'play' && (
         <SplashBoundary
           onFail={() => {
-            played = true;
+            markPlayed();
             setPhase('done');
           }}>
           <SplashScreen
@@ -94,7 +121,7 @@ export function SplashGate({children}: {children: React.ReactNode}): React.JSX.E
             onDone={() => {
               // It got to the end: clear the strike.
               settingsStore.save({...settingsStore.get(), splashStrikes: 0}).catch(() => {});
-              played = true;
+              markPlayed();
               setPhase('done');
             }}
           />
