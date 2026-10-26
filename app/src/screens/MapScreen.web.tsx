@@ -42,7 +42,7 @@ export default function MapScreen() {
     if (!el) return;
     const m = new maplibregl.Map({
       container: el,
-      style: theme.mapStyleUrl,
+      style: theme.mapStyle,
       center: [0, 20],
       zoom: 1.5,
       attributionControl: { compact: true },
@@ -59,8 +59,8 @@ export default function MapScreen() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    map.current?.setStyle(theme.mapStyleUrl);
-  }, [theme.mapStyleUrl]);
+    map.current?.setStyle(theme.mapStyle);
+  }, [theme.mapStyle]);
 
   // Keep one marker per friend, in step with their positions.
   useEffect(() => {

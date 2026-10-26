@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Icon } from '../components/Icon';
 import { ensureBackgroundLocationTask } from '../location/backgroundTask';
+import { PermissionsContext } from '../location/permissionsContext';
 import { usePermissionsGate } from '../location/usePermissionsGate';
 import { splashHold } from '../logo/splashHold';
 import FriendsScreen from '../screens/FriendsScreen';
@@ -24,10 +25,10 @@ export default function RootNavigator() {
   const permissions = usePermissionsGate();
 
   useEffect(() => {
-    if (status === 'signedIn' && permissions.allGranted) {
+    if (status === 'signedIn' && permissions.backgroundLocationGranted) {
       ensureBackgroundLocationTask().catch(() => {});
     }
-  }, [status, permissions.allGranted]);
+  }, [status, permissions.backgroundLocationGranted]);
 
   const loading = status === 'loading' || permissions.loading;
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function RootNavigator() {
     );
   }
 
-  if (!permissions.allGranted) {
+  if (!permissions.foregroundLocationGranted) {
     return (
       <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
         <Stack.Screen name="Permissions">{() => <PermissionsGateScreen permissions={permissions} />}</Stack.Screen>
@@ -67,21 +68,23 @@ export default function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Map" component={MapScreen} options={{ headerShown: false }} />
-      <Stack.Screen
-        name="Friends"
-        component={FriendsScreen}
-        options={({ navigation }) => ({
-          headerRight: () => (
-            <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={10} accessibilityLabel="Settings">
-              <Icon name="gear" color={theme.text} size={22} />
-            </Pressable>
-          ),
-        })}
-      />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
-      <Stack.Screen name="Privacy" component={PrivacyPolicy} options={{ title: 'Privacy policy' }} />
-    </Stack.Navigator>
+    <PermissionsContext.Provider value={permissions}>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="Map" component={MapScreen} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Friends"
+          component={FriendsScreen}
+          options={({ navigation }) => ({
+            headerRight: () => (
+              <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={10} accessibilityLabel="Settings">
+                <Icon name="gear" color={theme.text} size={22} />
+              </Pressable>
+            ),
+          })}
+        />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Privacy" component={PrivacyPolicy} options={{ title: 'Privacy policy' }} />
+      </Stack.Navigator>
+    </PermissionsContext.Provider>
   );
 }

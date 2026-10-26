@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FriendLocation } from '../location/friendStream';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { timeAgo } from '../time';
+import { BackgroundLocationBanner } from './BackgroundLocationBanner';
 import { Icon } from './Icon';
 
 export function initialsFor(name: string): string {
@@ -18,7 +19,8 @@ export function initialsFor(name: string): string {
 // and the web one (MapScreen.web.tsx): the Friends button with its badge for
 // requests waiting on you, the "fit everyone" button, the card for a tapped
 // friend, and the empty-state nudge. `notice` is a fixed line at the top
-// (the web build's "view only").
+// (the web build's "view only"); without one, the top holds
+// BackgroundLocationBanner when it applies.
 export function MapChrome({
   pendingCount,
   onFit,
@@ -41,10 +43,12 @@ export function MapChrome({
 
   return (
     <>
-      {notice && (
+      {notice ? (
         <View style={[styles.notice, { top: insets.top + 12 }]}>
           <Text style={styles.noticeText}>{notice}</Text>
         </View>
+      ) : (
+        <BackgroundLocationBanner style={{ ...styles.banner, top: insets.top + 12 }} />
       )}
 
       <View style={[styles.topRight, { top: insets.top + 12 }]}>
@@ -126,6 +130,7 @@ const makeStyles = (theme: Theme) =>
       paddingHorizontal: 14,
     },
     noticeText: { color: theme.text, fontSize: 14 },
+    banner: { position: 'absolute', left: 16, right: 80 },
     card: {
       position: 'absolute',
       left: 16,

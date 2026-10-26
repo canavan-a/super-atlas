@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Icon } from '../components/Icon';
 import { Button, Card, TextField } from '../components/ui';
 import { Friend, useFriends } from '../friends/useFriends';
@@ -83,6 +84,7 @@ export default function FriendsScreen() {
 
   const header = (
     <View>
+      <BackgroundLocationBanner style={styles.banner} />
       <Card style={styles.ghostCard}>
         <Icon name="ghost" color={ghostMode ? theme.primary : theme.textMuted} size={22} />
         <View style={styles.ghostText}>
@@ -175,6 +177,7 @@ const makeStyles = (theme: Theme) =>
     root: { flex: 1, backgroundColor: theme.bg },
     content: { padding: 16, paddingBottom: 40 },
     flex: { flex: 1 },
+    banner: { marginBottom: 16 },
     ghostCard: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     ghostText: { flex: 1 },
     inviteButton: { marginTop: 16 },

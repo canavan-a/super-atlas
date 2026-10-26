@@ -3,13 +3,13 @@ import { Button } from '../components/ui';
 import { PermissionsState } from '../location/usePermissionsGate';
 import { Theme, useThemedStyles } from '../theme';
 
-// Blocks the app until location (foreground + background) is granted.
+// Blocks the app until location is granted, then asks for background
+// location too; declining that only brings up BackgroundLocationBanner.
 // Explains why before the OS prompt, which both Apple and Google expect for
 // background location. Once the OS stops showing its prompt, the button
 // opens Settings instead, and the screen re-checks when you come back.
 export default function PermissionsGateScreen({ permissions }: { permissions: PermissionsState }) {
   const styles = useThemedStyles(makeStyles);
-  const needsBackground = permissions.foregroundLocationGranted && !permissions.backgroundLocationGranted;
 
   return (
     <View style={styles.root}>
@@ -27,9 +27,7 @@ export default function PermissionsGateScreen({ permissions }: { permissions: Pe
         shared with anyone else. You can hide from everyone at any time with ghost mode.
       </Text>
       <Text style={styles.body}>
-        {needsBackground
-          ? 'One more step: choose "Allow all the time" so your friends still see you when the app is closed.'
-          : 'Allow location access, then choose "Allow all the time" so your friends still see you when the app is closed.'}
+        Allow location access, then choose "Allow all the time" so your friends still see you when the app is closed.
       </Text>
       <Button
         label={permissions.mustOpenSettings ? 'Open Settings' : 'Continue'}
@@ -37,7 +35,7 @@ export default function PermissionsGateScreen({ permissions }: { permissions: Pe
         style={styles.button}
       />
       {permissions.mustOpenSettings && (
-        <Text style={styles.hint}>In Settings, go to Location and pick "Allow all the time".</Text>
+        <Text style={styles.hint}>In Settings, go to Location and pick "Allow all the time" (or at least "While using the app").</Text>
       )}
     </View>
   );

@@ -11,6 +11,7 @@ import {
   updatesSupported,
 } from '../appUpdater';
 import { useAuth } from '../auth/AuthContext';
+import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Button, Card } from '../components/ui';
 import {
   backgroundNotificationsEnabled,
@@ -129,6 +130,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
+      <BackgroundLocationBanner />
       <Text style={styles.section}>Theme</Text>
       <View style={styles.themeRow}>
         {THEME_OPTIONS.map((opt) => (

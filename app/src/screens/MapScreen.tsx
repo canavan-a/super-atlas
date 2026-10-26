@@ -72,7 +72,7 @@ export default function MapScreen() {
     <View style={styles.root}>
       <Map
         style={styles.map}
-        mapStyle={theme.mapStyleUrl}
+        mapStyle={theme.mapStyle}
         compass={false}
         logo={false}
         attributionPosition={{ bottom: 8, left: 8 }}

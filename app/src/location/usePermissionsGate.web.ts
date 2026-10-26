@@ -6,8 +6,8 @@ export function usePermissionsGate(): PermissionsState {
     loading: false,
     foregroundLocationGranted: true,
     backgroundLocationGranted: true,
-    allGranted: true,
     mustOpenSettings: false,
     requestAll: async () => {},
+    requestBackground: async () => {},
   };
 }

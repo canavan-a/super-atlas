@@ -3,7 +3,9 @@
 // StyleSheet — only color tokens come from here, so switching themes never
 // has to touch geometry.
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { StyleSpecification } from 'maplibre-gl';
 
+import { darkMapStyle } from './map/darkStyle';
 import { settingsStore } from './settings';
 
 export type ThemeName = 'light' | 'dark' | 'slate' | 'sepia' | 'ember';
@@ -28,14 +30,59 @@ export interface Theme {
   friendMarkerText: string;
   staleMarker: string;
   markerStroke: string;
-  // OpenFreeMap basemap that sits best under this palette.
-  mapStyleUrl: string;
+  // Basemap that sits best under this palette: an OpenFreeMap style URL, or a
+  // recolored style (src/map/darkStyle.ts).
+  mapStyle: string | StyleSpecification;
 }
 
 const MAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-const MAP_DARK = 'https://tiles.openfreemap.org/styles/dark';
 const MAP_FIORD = 'https://tiles.openfreemap.org/styles/fiord';
 const MAP_POSITRON = 'https://tiles.openfreemap.org/styles/positron';
+
+// OpenFreeMap's own "dark" is too low-contrast to read; these recolor it
+// (src/map/darkStyle.ts) to sit under each dark palette.
+const MAP_DARK = darkMapStyle({
+  land: '#0d1117',
+  residential: '#121821',
+  park: '#173622',
+  water: '#0e2c4a',
+  waterway: '#1b4a78',
+  building: '#1c232d',
+  buildingOutline: '#2b3442',
+  path: '#3a4452',
+  roadMinor: '#2b333f',
+  roadMajor: '#46505f',
+  roadCasing: '#1f2630',
+  motorway: '#8a6d3b',
+  rail: '#353d4a',
+  aeroway: '#2b333f',
+  boundary: '#5a6577',
+  label: '#c9d1d9',
+  roadLabel: '#9aa4b1',
+  waterLabel: '#6ea8e0',
+  halo: '#0d1117',
+});
+const MAP_EMBER = darkMapStyle({
+  land: '#0b0807',
+  residential: '#130e0c',
+  park: '#1c2714',
+  water: '#13202a',
+  waterway: '#24394a',
+  building: '#1d1614',
+  buildingOutline: '#2d221e',
+  path: '#45342d',
+  roadMinor: '#2c211d',
+  roadMajor: '#4a3830',
+  roadCasing: '#1a1311',
+  motorway: '#8a3f24',
+  rail: '#3a2c27',
+  aeroway: '#2c211d',
+  boundary: '#6b5248',
+  label: '#e8d9d0',
+  roadLabel: '#a98d80',
+  waterLabel: '#7a9db2',
+  halo: '#050403',
+});
 
 const light: Theme = {
   name: 'light',
@@ -55,7 +102,7 @@ const light: Theme = {
   friendMarkerText: '#ffffff',
   staleMarker: '#8c959f',
   markerStroke: '#ffffff',
-  mapStyleUrl: MAP_LIGHT,
+  mapStyle: MAP_LIGHT,
 };
 
 const dark: Theme = {
@@ -76,7 +123,7 @@ const dark: Theme = {
   friendMarkerText: '#ffffff',
   staleMarker: '#6e7681',
   markerStroke: '#e6edf3',
-  mapStyleUrl: MAP_DARK,
+  mapStyle: MAP_DARK,
 };
 
 const slate: Theme = {
@@ -97,7 +144,7 @@ const slate: Theme = {
   friendMarkerText: '#0d1117',
   staleMarker: '#76839a',
   markerStroke: '#dde3ea',
-  mapStyleUrl: MAP_FIORD,
+  mapStyle: MAP_FIORD,
 };
 
 const sepia: Theme = {
@@ -118,7 +165,7 @@ const sepia: Theme = {
   friendMarkerText: '#fdf6e7',
   staleMarker: '#a8987a',
   markerStroke: '#fdf6e7',
-  mapStyleUrl: MAP_POSITRON,
+  mapStyle: MAP_POSITRON,
 };
 
 // Same dark base as `dark`, swapping its blue accent for a warm red/orange
@@ -141,7 +188,7 @@ const ember: Theme = {
   friendMarkerText: '#f1e2d9',
   staleMarker: '#5e4a41',
   markerStroke: '#e8d9d0',
-  mapStyleUrl: MAP_DARK,
+  mapStyle: MAP_EMBER,
 };
 
 export const THEMES: Record<ThemeName, Theme> = { light, dark, slate, sepia, ember };
