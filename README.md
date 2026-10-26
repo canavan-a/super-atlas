@@ -31,7 +31,7 @@ app/        React Native app: Android (committed android/, two Gradle flavors)
 server/     Go + SQLite server: email-code sign-in, friends, live locations,
             notifications (WebSocket + FCM), serves the web build
 tools/      appart: generates the logo data and launcher icons from art/
-art/        the pixel art (a map pin + "Super Atlas" in super-badger's lettering)
+art/        the pixel art (a scroll, a world map, and "Super Atlas" in super-badger's lettering)
 release/    APK/AAB signing and the guided releases (app-v* tags, Play bundles)
 module.nix  NixOS module: services.superatlas
 ```

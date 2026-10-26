@@ -1,14 +1,16 @@
 // Command appart generates the app's logo data and launcher icons from the
-// pixel art in art/, copied from super-chat's tools/appart, so the boot
+// pixel art in art/, adapted from super-chat's tools/appart, so the boot
 // screen, the launcher icon and the notification icon are all the same
-// picture.
+// picture: a scroll. Unrolled, it shows the stacked "Super Atlas" wordmark
+// (art/word.txt); unrolled again in the boot animation, a world map.
 //
 //	cd tools && go run ./appart                      # writes into ../app
 //	cd tools && go run ./appart -preview /tmp/out    # also renders PNG previews
 //
-// It writes:
+// It reads art/word.txt and the scroll's layers, art/scroll_paper.txt,
+// scroll_map.txt and scroll_rollers.txt (one 96 x 72 grid), and writes:
 //
-//	app/src/logo/logoData.ts      the logo as tone-mapped vector runs
+//	app/src/logo/logoData.ts      the scroll's layers as tone-mapped vector runs
 //	app/src/logo/iconPalette.json per-theme colors
 //	app/android/app/src/main/res  adaptive + legacy launcher icons, one per
 //	                              theme, and the notification icon
@@ -43,14 +45,33 @@ var themeOrder = []string{"light", "dark", "slate", "sepia", "ember"}
 type Tone struct{ U, W float64 }
 
 // The art files' legend. A–I are the wordmark's tones, graded letter by
-// letter left to right exactly as super-badger's are; 1–3 are the pin's
-// fill; o marks the pin's hole.
+// letter left to right exactly as super-badger's are. The rest are the
+// scroll's: a–e its outline, graded left to right toward the accent; r the
+// rollers' wood, h and k their light and dark sides; p the paper, s paper in
+// shadow where it curls into a roller; g the map's grid; o the accent (the
+// map's land, the handles' knobs).
 var legend = map[byte]Tone{
 	'A': {4, 1}, 'B': {3.8333, 0.5}, 'C': {4, 0.5}, 'D': {3.6667, 0.5}, 'E': {3.5, 0.5},
 	'F': {3.3333, 0.5}, 'G': {3.3333, 0}, 'H': {3.1667, 0}, 'I': {3, 0},
-	'1': {1, 0}, '2': {1.5, 0}, '3': {2, 0},
+	'a': {3.45, 0.05}, 'b': {3.45, 0.16}, 'c': {3.45, 0.27}, 'd': {3.45, 0.38}, 'e': {3.45, 0.5},
+	'r': {2.3, 0}, 'h': {2.7, 0}, 'k': {1.95, 0},
+	'p': {1.25, 0}, 's': {1.7, 0}, 'g': {1.85, 0},
 	'o': {4, 1},
 }
+
+// isLetter reports whether a pixel belongs to the wordmark's lettering.
+func isLetter(c byte) bool { return c >= 'A' && c <= 'I' }
+
+// The scroll's geometry on its 96 x 72 grid (art/scroll_*.txt). Open, the
+// left roller sits at column openX0; closed, the two meet in the middle, the
+// left one at closedX0. The visible paper reaches revealInset columns short
+// of the travel, because the rollers and their curl cover its edge.
+const (
+	scrollCenter = 48
+	openX0       = 5
+	closedX0     = 44
+	revealInset  = 3
+)
 
 // Grid is a picture as rows of legend bytes ('.' is empty).
 type Grid []string
@@ -182,10 +203,14 @@ func main() {
 	preview := flag.String("preview", "", "also render PNG previews into this directory")
 	flag.Parse()
 
-	mark, _, err := readArt(filepath.Join(*artDir, "mark.txt"))
-	must(err)
 	word, slices, err := readArt(filepath.Join(*artDir, "word.txt"))
 	must(err)
+	layers := map[string]Grid{}
+	for _, name := range []string{"paper", "map", "rollers"} {
+		g, _, err := readArt(filepath.Join(*artDir, "scroll_"+name+".txt"))
+		must(err)
+		layers[name] = g
+	}
 	themeSrc, err := os.ReadFile(filepath.Join(*app, "src/theme.tsx"))
 	must(err)
 	pals, err := parseThemes(string(themeSrc))
@@ -196,30 +221,74 @@ func main() {
 		}
 	}
 
-	// The wordmark is stacked, "Super" over "Atlas", everywhere: on the splash
-	// under the pin, and alone as the launcher icon. The mark is centered
-	// over it; both share one width. The one-line wordmark is kept too, for
-	// a one-line header.
-	line := crop(word)
-	word, slices = stackWord(word, slices)
-	width := max(word.w(), mark.w())
-	mark = center(mark, width)
-	shift := (width - word.w()) / 2
-	word = center(word, width)
-	for i := range slices {
-		slices[i].x0 += shift
-		slices[i].x1 += shift
-	}
-
-	must(writeLogoData(filepath.Join(*app, "src/logo/logoData.ts"), width, mark, word, slices, line))
-	icon := crop(word)
-	must(writePalette(filepath.Join(*app, "src/logo/iconPalette.json"), pals, icon))
-	must(writeAndroid(filepath.Join(*app, "android/app/src/main/res"), pals, icon))
-	must(writeWebIcons(filepath.Join(*app, "public"), pals["dark"], icon))
+	s := buildScroll(layers, word, slices)
+	must(writeLogoData(filepath.Join(*app, "src/logo/logoData.ts"), s))
+	must(writePalette(filepath.Join(*app, "src/logo/iconPalette.json"), pals, s.icon))
+	must(writeAndroid(filepath.Join(*app, "android/app/src/main/res"), pals, s.icon))
+	must(writeWebIcons(filepath.Join(*app, "public"), pals["dark"], s.icon))
 	if *preview != "" {
-		must(writePreviews(*preview, pals, mark, word, icon))
+		must(writePreviews(*preview, pals, s))
 	}
 	fmt.Println("generated logo data, palette and icons from", *artDir)
+}
+
+// scroll is the boot scroll's parts, all on the scroll's own grid.
+type scroll struct {
+	w, h                int
+	paperText, paperMap Grid // the unrolled paper with the wordmark, and with the map
+	rollerL, rollerR    Grid // the rollers, open
+	icon                Grid // the open scroll with the wordmark, cropped
+}
+
+func buildScroll(layers map[string]Grid, word Grid, slices []span) scroll {
+	paper := layers["paper"]
+	w, h := paper.w(), len(paper)
+	for name, g := range layers {
+		if g.w() != w || len(g) != h {
+			must(fmt.Errorf("scroll_%s.txt is %dx%d; scroll_paper.txt is %dx%d", name, g.w(), len(g), w, h))
+		}
+	}
+	// The wordmark stacked, "Super" over "Atlas", and centered on the paper.
+	stacked, _ := stackWord(word, slices)
+	stacked = crop(stacked)
+	x := (w - stacked.w()) / 2
+	y := int(math.Round(float64(h-1)/2 - float64(len(stacked))/2))
+	s := scroll{
+		w: w, h: h,
+		paperText: overlay(paper, stacked, x, y),
+		paperMap:  overlay(paper, layers["map"], 0, 0),
+		rollerL:   sliceGrid(layers["rollers"], 0, scrollCenter),
+		rollerR:   overlay(blank(w, h), sliceGrid(layers["rollers"], scrollCenter, w), scrollCenter, 0),
+	}
+	s.rollerL = overlay(blank(w, h), s.rollerL, 0, 0)
+	s.icon = crop(overlay(s.paperText, layers["rollers"], 0, 0))
+	return s
+}
+
+// blank is an empty w x h grid.
+func blank(w, h int) Grid {
+	g := make(Grid, h)
+	for i := range g {
+		g[i] = strings.Repeat(".", w)
+	}
+	return g
+}
+
+// overlay draws top's pixels over base, top's (0, 0) at (x, y).
+func overlay(base, top Grid, x, y int) Grid {
+	out := make(Grid, len(base))
+	for j, row := range base {
+		b := []byte(row)
+		if ty := j - y; ty >= 0 && ty < len(top) {
+			for i := range b {
+				if c := top.at(i-x, ty); c != '.' {
+					b[i] = c
+				}
+			}
+		}
+		out[j] = string(b)
+	}
+	return out
 }
 
 // center pads every row to width w, keeping the picture centered.
@@ -240,26 +309,17 @@ func must(err error) {
 	}
 }
 
-func writeLogoData(path string, width int, mark, word Grid, slices []span, line Grid) error {
-	body := groupOf(mark, 0, width, func(c byte) bool { return c != 'o' })
-	dots := groupOf(mark, 0, width, func(c byte) bool { return c == 'o' })
-	var ex, ey, en float64
-	for y, row := range mark {
-		for x := range len(row) {
-			if row[x] == 'o' {
-				ex, ey, en = ex+float64(x)+0.5, ey+float64(y)+0.5, en+1
-			}
-		}
-	}
+func writeLogoData(path string, s scroll) error {
+	all := func(byte) bool { return true }
 	var b strings.Builder
-	b.WriteString(`// GENERATED by "go run ./appart" (from tools/) out of art/mark.txt and
-// art/word.txt. Do not edit by hand; edit the art and regenerate.
+	b.WriteString(`// GENERATED by "go run ./appart" (from tools/) out of art/word.txt and
+// art/scroll_*.txt. Do not edit by hand; edit the art and regenerate.
 //
 // The logo is described by *tone*, not color: u is the position along the
 // art's own dark→light ramp (0..4) and w how far the pixel leans toward the
 // accent (0..1). logoTheme.ts turns tones into a theme's colors, so one set of
 // shapes serves every theme. runs is flat [x, y, length, ...] in sub-pixels
-// (one sub-pixel is 1 unit wide and a bit taller; see PIXEL_ASPECT).
+// (one sub-pixel is 3 units wide and 4 tall; see LogoArt.tsx).
 
 export interface ToneRuns {
   u: number;
@@ -267,37 +327,32 @@ export interface ToneRuns {
   runs: number[];
 }
 
+/** The boot scroll, every layer on one grid of width x height sub-pixels. */
 export interface LogoData {
-  /** width of every part, in sub-pixels */
   width: number;
-  /** the map pin */
-  mark: {rows: number; tones: ToneRuns[]};
-  /** the pin's hole, in its coordinates (drawn on top) */
-  dots: {cx: number; cy: number; tones: ToneRuns[]};
-  /** blank sub-rows between the pin and the wordmark */
-  gap: number;
-  /** the wordmark cut into letters, for a staggered reveal */
-  word: {rows: number; slices: {x0: number; x1: number; tones: ToneRuns[]}[]};
-  /** the pin, cropped */
-  icon: {w: number; h: number; tones: ToneRuns[]};
-  /** the wordmark on one line, cropped (for a one-line header) */
-  line: {w: number; h: number; tones: ToneRuns[]};
+  height: number;
+  /** the unrolled paper with the stacked wordmark (and the launcher icon) */
+  paperText: ToneRuns[];
+  /** the unrolled paper with the world map */
+  paperMap: ToneRuns[];
+  /** the rollers, at the open position */
+  rollerLeft: ToneRuns[];
+  rollerRight: ToneRuns[];
+  /** the column the scroll opens from */
+  center: number;
+  /** columns each roller travels between open and closed */
+  travel: number;
+  /** open by t (0..1), the paper shows travel * t - revealInset columns either side of center */
+  revealInset: number;
 }
 
 `)
-	b.WriteString(fmt.Sprintf("export const LOGO: LogoData = {\n  width: %d,\n", width))
-	b.WriteString(fmt.Sprintf("  mark: {rows: %d, tones: %s},\n", len(mark), tonesTS(body, "  ")))
-	b.WriteString(fmt.Sprintf("  dots: {cx: %s, cy: %s, tones: %s},\n", num(ex/en), num(ey/en), tonesTS(dots, "  ")))
-	b.WriteString("  gap: 4,\n")
-	b.WriteString(fmt.Sprintf("  word: {\n    rows: %d,\n    slices: [\n", len(word)))
-	for _, sp := range slices {
-		g := groupOf(rowsOnly(word, sp.y0, sp.y1), sp.x0, sp.x1, func(byte) bool { return true })
-		b.WriteString(fmt.Sprintf("      {x0: %d, x1: %d, tones: %s},\n", sp.x0, sp.x1, tonesTS(g, "      ")))
-	}
-	b.WriteString("    ],\n  },\n")
-	icon := crop(mark)
-	b.WriteString(fmt.Sprintf("  icon: {w: %d, h: %d, tones: %s},\n", icon.w(), len(icon), tonesTS(groupOf(icon, 0, icon.w(), func(byte) bool { return true }), "  ")))
-	b.WriteString(fmt.Sprintf("  line: {w: %d, h: %d, tones: %s},\n};\n", line.w(), len(line), tonesTS(groupOf(line, 0, line.w(), func(byte) bool { return true }), "  ")))
+	b.WriteString(fmt.Sprintf("export const LOGO: LogoData = {\n  width: %d,\n  height: %d,\n", s.w, s.h))
+	b.WriteString(fmt.Sprintf("  paperText: %s,\n", tonesTS(groupOf(s.paperText, 0, s.w, all), "  ")))
+	b.WriteString(fmt.Sprintf("  paperMap: %s,\n", tonesTS(groupOf(s.paperMap, 0, s.w, all), "  ")))
+	b.WriteString(fmt.Sprintf("  rollerLeft: %s,\n", tonesTS(groupOf(s.rollerL, 0, s.w, all), "  ")))
+	b.WriteString(fmt.Sprintf("  rollerRight: %s,\n", tonesTS(groupOf(s.rollerR, 0, s.w, all), "  ")))
+	b.WriteString(fmt.Sprintf("  center: %d,\n  travel: %d,\n  revealInset: %d,\n};\n", scrollCenter, closedX0-openX0, revealInset))
 	return writeFile(path, b.String())
 }
 
@@ -405,7 +460,7 @@ func writeAndroid(res string, pals map[string]Palette, icon Grid) error {
 		for _, t := range sortedTones(g) {
 			paths.WriteString(fmt.Sprintf("    <path android:fillColor=\"%s\" android:pathData=\"%s\" />\n", toHex(p.color(t)), rectPath(g[t], x0, y0, pw, ph)))
 		}
-		fg := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: the stacked wordmark, in the " + n + " theme. -->\n" + vector(108, paths.String())
+		fg := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: the open scroll with the wordmark, in the " + n + " theme. -->\n" + vector(108, paths.String())
 		if err := writeFile(filepath.Join(res, "drawable", "ic_launcher_fg_"+n+".xml"), fg); err != nil {
 			return err
 		}
@@ -432,21 +487,23 @@ func writeAndroid(res string, pals map[string]Palette, icon Grid) error {
 		return err
 	}
 
-	// Single-color versions. The wordmark is all letters, so all of it.
+	// Single-color versions: the scroll's silhouette, with the wordmark's
+	// letters cut out of it so they still read.
 	var all []int
-	for _, t := range sortedTones(g) {
-		all = append(all, g[t]...)
+	shape := groupOf(icon, 0, icon.w(), func(c byte) bool { return !isLetter(c) })
+	for _, t := range sortedTones(shape) {
+		all = append(all, shape[t]...)
 	}
-	mono := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: single-color wordmark for Android 13+ themed icons. -->\n" +
+	mono := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: the scroll in one color, for Android 13+ themed icons. -->\n" +
 		vector(108, fmt.Sprintf("    <path android:fillColor=\"#FFFFFF\" android:pathData=\"%s\" />\n", rectPath(all, x0, y0, pw, ph)))
 	if err := writeFile(filepath.Join(res, "drawable", "ic_launcher_mono.xml"), mono); err != nil {
 		return err
 	}
-	// The status-bar icon is the same stacked wordmark, in white, as large as
-	// fits 22 of its 24dp.
+	// The status-bar icon is the same silhouette, in white, as large as fits
+	// 22 of its 24dp.
 	aspect := float64(len(icon)) * pixAspect / float64(icon.w())
 	npw, nph, nx0, ny0 := iconGeom(icon, 24, 22/max(1, aspect))
-	notif := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: the stacked wordmark as the status-bar notification icon. -->\n" +
+	notif := "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- GENERATED by tools/appart: the scroll as the status-bar notification icon. -->\n" +
 		vector(24, fmt.Sprintf("    <path android:fillColor=\"#FFFFFF\" android:pathData=\"%s\" />\n", rectPath(all, nx0, ny0, npw, nph)))
 	return writeFile(filepath.Join(res, "drawable", "ic_notification.xml"), notif)
 }
@@ -534,33 +591,51 @@ func inShape(x, y, size, r float64, round bool) bool {
 
 // ---- previews ----
 
-func writePreviews(dir string, pals map[string]Palette, mark, word, icon Grid) error {
+// writePreviews renders, per theme, the boot animation's key frames side by
+// side (closed, half open, open on the wordmark, open on the map) and the
+// launcher icon.
+func writePreviews(dir string, pals map[string]Palette, s scroll) error {
 	const pw, ph, scale = 3, 4, 2
+	travel := closedX0 - openX0
+	frame := func(paper Grid, open float64) Grid {
+		shift := int(math.Round(float64(travel) * (1 - open)))
+		half := float64(travel)*open - revealInset
+		shown := blank(s.w, s.h)
+		for y, row := range paper {
+			b := []byte(shown[y])
+			for x := range len(row) {
+				if math.Abs(float64(x)+0.5-scrollCenter) <= half {
+					b[x] = row[x]
+				}
+			}
+			shown[y] = string(b)
+		}
+		g := overlay(shown, s.rollerL, shift, 0)
+		return overlay(g, s.rollerR, -shift, 0)
+	}
+	frames := []Grid{frame(s.paperText, 0), frame(s.paperText, 0.5), frame(s.paperText, 1), frame(s.paperMap, 1)}
 	for _, n := range themeOrder {
 		p := pals[n]
-		rows := len(mark) + 4 + len(word)
-		w := mark.w()
-		img := image.NewNRGBA(image.Rect(0, 0, (w+8)*pw*scale, (rows+6)*ph*scale))
+		img := image.NewNRGBA(image.Rect(0, 0, len(frames)*(s.w+4)*pw*scale, (s.h+4)*ph*scale))
 		bg := p.Bg
 		draw.Draw(img, img.Bounds(), &image.Uniform{color.NRGBA{clamp(bg[0]), clamp(bg[1]), clamp(bg[2]), 255}}, image.Point{}, draw.Src)
-		fill := func(g Grid, yOff int) {
+		for i, g := range frames {
+			ox := i*(s.w+4) + 2
 			for y, row := range g {
 				for x := range len(row) {
 					if row[x] == '.' {
 						continue
 					}
 					c := p.color(legend[row[x]])
-					rc := image.Rect((x+4)*pw*scale, (y+yOff+3)*ph*scale, (x+5)*pw*scale, (y+yOff+4)*ph*scale)
+					rc := image.Rect((x+ox)*pw*scale, (y+2)*ph*scale, (x+ox+1)*pw*scale, (y+3)*ph*scale)
 					draw.Draw(img, rc, &image.Uniform{color.NRGBA{clamp(c[0]), clamp(c[1]), clamp(c[2]), 255}}, image.Point{}, draw.Src)
 				}
 			}
 		}
-		fill(mark, 0)
-		fill(word, len(mark)+4)
-		if err := writePNG(filepath.Join(dir, "logo_"+n+".png"), img); err != nil {
+		if err := writePNG(filepath.Join(dir, "boot_"+n+".png"), img); err != nil {
 			return err
 		}
-		if err := writePNG(filepath.Join(dir, "icon_"+n+".png"), renderIcon(p, icon, 256, false, iconWidth(icon), 0.2)); err != nil {
+		if err := writePNG(filepath.Join(dir, "icon_"+n+".png"), renderIcon(p, s.icon, 256, false, iconWidth(s.icon), 0.2)); err != nil {
 			return err
 		}
 	}

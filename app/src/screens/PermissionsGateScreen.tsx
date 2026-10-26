@@ -14,9 +14,17 @@ export default function PermissionsGateScreen({ permissions }: { permissions: Pe
   return (
     <View style={styles.root}>
       <Text style={styles.title}>Share your location</Text>
+      {/* Google Play's "prominent disclosure" for background location: what is
+          collected, that it continues when the app is closed or not in use,
+          and what it's used for, shown before the OS prompt. Keep it in step
+          with the privacy policy (src/privacy/policy.ts). */}
       <Text style={styles.body}>
-        Super Atlas shows you and your friends on a map. Only people you add as friends can see where you are, and
-        you can hide any time with ghost mode.
+        Super Atlas collects location data to show your location to your friends on a map, even when the app is
+        closed or not in use.
+      </Text>
+      <Text style={styles.body}>
+        Only people you accept as friends can see it, and only your latest position is kept. It is never sold or
+        shared with anyone else. You can hide from everyone at any time with ghost mode.
       </Text>
       <Text style={styles.body}>
         {needsBackground

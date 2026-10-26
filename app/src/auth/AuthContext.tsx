@@ -16,6 +16,8 @@ type AuthState = {
   verify: (email: string, code: string, displayName?: string) => Promise<VerifyResult>;
   setGhostMode: (on: boolean) => Promise<void>;
   logout: () => Promise<void>;
+  /** Deletes the account and all its data on the server, then signs out here. */
+  deleteAccount: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -113,9 +115,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signOutLocally();
   }, [signOutLocally]);
 
+  // Unlike logout, a failure here is thrown: the account must really be gone
+  // before this device forgets it.
+  const deleteAccount = useCallback(async () => {
+    await apiJson('/me', { method: 'DELETE' });
+    await signOutLocally();
+  }, [signOutLocally]);
+
   const value = useMemo(
-    () => ({ status, user, ghostMode, requestCode, verify, setGhostMode, logout }),
-    [status, user, ghostMode, requestCode, verify, setGhostMode, logout]
+    () => ({ status, user, ghostMode, requestCode, verify, setGhostMode, logout, deleteAccount }),
+    [status, user, ghostMode, requestCode, verify, setGhostMode, logout, deleteAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

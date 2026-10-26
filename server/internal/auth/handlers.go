@@ -169,3 +169,13 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// DeleteMe deletes the signed-in account and everything tied to it.
+func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	userID, _ := UserIDFromContext(r.Context())
+	if err := h.service.DeleteAccount(r.Context(), userID); err != nil && !errors.Is(err, ErrNotFound) {
+		writeError(w, http.StatusInternalServerError, "could not delete account")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

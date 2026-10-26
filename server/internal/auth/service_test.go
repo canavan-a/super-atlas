@@ -227,3 +227,73 @@ func TestMigrationAllowsExistingAccounts(t *testing.T) {
 		t.Fatalf("existing account: %v %v", ok, err)
 	}
 }
+
+func TestDeleteAccountRemovesEverything(t *testing.T) {
+	ctx := context.Background()
+	svc, mailer, _ := newTestService(t)
+	signUp := func(email, name string) (*User, string) {
+		t.Helper()
+		if err := svc.RequestCode(ctx, email); err != nil {
+			t.Fatal(err)
+		}
+		user, token, err := svc.Verify(ctx, email, mailer.codes[email], name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return user, token
+	}
+	ada, token := signUp("ada@example.com", "Ada")
+	bob, _ := signUp("a@b.co", "Bob")
+
+	conn := svc.store.db
+	for _, q := range []string{
+		`INSERT INTO friendships (id, requester_id, addressee_id, status) VALUES ('f1', ?1, ?2, 'accepted')`,
+		`INSERT INTO locations (user_id, latitude, longitude, recorded_at) VALUES (?1, 1, 2, '2026-01-01T00:00:00Z')`,
+		`INSERT INTO user_settings (user_id, sharing_paused) VALUES (?1, 1)`,
+		`INSERT INTO push_tokens (token, user_id, session_id) SELECT 'tok', ?1, id FROM sessions WHERE user_id = ?1`,
+	} {
+		if _, err := conn.ExecContext(ctx, q, ada.ID, bob.ID); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	// A code requested and never used.
+	if err := svc.RequestCode(ctx, "ada@example.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.DeleteAccount(ctx, ada.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	for table, where := range map[string]string{
+		"users":          "id = ?1",
+		"sessions":       "user_id = ?1",
+		"friendships":    "requester_id = ?1 OR addressee_id = ?1",
+		"locations":      "user_id = ?1",
+		"user_settings":  "user_id = ?1",
+		"push_tokens":    "user_id = ?1",
+		"login_codes":    "email = ?2",
+		"allowed_emails": "email = ?2",
+	} {
+		var n int
+		if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE `+where, ada.ID, "ada@example.com").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("%s: %d rows left", table, n)
+		}
+	}
+	if _, err := svc.Authenticate(ctx, token); err == nil {
+		t.Error("the deleted account's session still works")
+	}
+	// Nobody else is touched, and the email can't sign up again until allowed.
+	if _, err := svc.GetUser(ctx, bob.ID); err != nil {
+		t.Errorf("other user: %v", err)
+	}
+	if err := svc.RequestCode(ctx, "ada@example.com"); !errors.Is(err, ErrNotAllowed) {
+		t.Errorf("deleted email: want ErrNotAllowed, got %v", err)
+	}
+	if err := svc.DeleteAccount(ctx, ada.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("deleting twice: want ErrNotFound, got %v", err)
+	}
+}

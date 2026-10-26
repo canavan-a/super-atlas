@@ -1,5 +1,6 @@
+import { useNavigation } from '@react-navigation/native';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import {
   Release,
   compareVersions,
@@ -18,6 +19,19 @@ import {
 } from '../notifications';
 import { THEMES, THEME_OPTIONS, Theme, useTheme, useThemeSetting, useThemedStyles } from '../theme';
 
+// Asks before a destructive action: Alert on Android, the browser's own
+// dialog on the web, where react-native-web's Alert does nothing.
+function confirmThen(title: string, message: string, action: string, onConfirm: () => void) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+    return;
+  }
+  Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: action, style: 'destructive', onPress: onConfirm },
+  ]);
+}
+
 type UpdateState =
   | { kind: 'idle' }
   | { kind: 'checking' }
@@ -27,15 +41,18 @@ type UpdateState =
   | { kind: 'error'; message: string };
 
 // Deliberately short: theme, notifications (sideload), updates (sideload),
-// and sign out.
+// sign out, deleting the account, and the privacy policy.
 export default function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const { themeName, setThemeName } = useThemeSetting();
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const [version, setVersion] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ kind: 'idle' });
   const theme = useTheme();
   const [bgNotify, setBgNotify] = useState(false);
+  const navigation = useNavigation<any>();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (hasBackgroundNotificationSwitch) backgroundNotificationsEnabled().then(setBgNotify);
@@ -91,10 +108,24 @@ export default function SettingsScreen() {
   };
 
   const confirmSignOut = () =>
-    Alert.alert('Sign out?', 'Your friends will stop seeing you until you sign back in.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => logout() },
-    ]);
+    confirmThen('Sign out?', 'Your friends will stop seeing you until you sign back in.', 'Sign out', () => logout());
+
+  const confirmDelete = () =>
+    confirmThen(
+      'Delete your account?',
+      "This permanently deletes your account, your friends list and your location from the server, and signs you out everywhere. It can't be undone.",
+      'Delete',
+      async () => {
+        setDeleting(true);
+        setDeleteError(null);
+        try {
+          await deleteAccount();
+        } catch (e: any) {
+          setDeleteError(e.message ?? 'Could not delete your account');
+          setDeleting(false);
+        }
+      }
+    );
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -178,6 +209,18 @@ export default function SettingsScreen() {
         </Text>
       )}
       <Button label="Sign out" onPress={confirmSignOut} variant="danger" style={styles.buttonGap} />
+      <Button
+        label="Delete account"
+        onPress={confirmDelete}
+        loading={deleting}
+        variant="secondary"
+        style={styles.buttonGap}
+      />
+      {deleteError && <Text style={styles.error}>{deleteError}</Text>}
+
+      <Pressable onPress={() => navigation.navigate('Privacy')} hitSlop={8} accessibilityRole="link" style={styles.legal}>
+        <Text style={styles.legalText}>Privacy policy</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -220,4 +263,6 @@ const makeStyles = (theme: Theme) =>
     row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     rowText: { flex: 1 },
     hint: { color: theme.textMuted, fontSize: 13, marginTop: 2, lineHeight: 18 },
+    legal: { alignSelf: 'center', paddingVertical: 10, marginTop: 24 },
+    legalText: { color: theme.textMuted, fontSize: 12 },
   });

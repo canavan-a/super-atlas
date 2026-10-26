@@ -73,6 +73,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Use(limitUser(300, time.Minute))
 
 		r.Get("/me", d.AuthHandlers.Me)
+		r.Delete("/me", d.AuthHandlers.DeleteMe)
 		r.Post("/auth/logout", d.AuthHandlers.Logout)
 
 		r.Route("/friends", func(r chi.Router) {

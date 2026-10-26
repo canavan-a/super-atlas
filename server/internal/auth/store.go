@@ -171,6 +171,43 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error 
 	return err
 }
 
+// DeleteUser deletes the account and everything tied to it. Deleting the
+// users row cascades to its sessions, push tokens, friendships, location and
+// settings; its pending sign-in codes, its allowlist entry (so the email is
+// gone entirely, and the admin has to allow it again for a new account) and
+// any dev-mode "larp" fake friends it owns go here too.
+func (s *Store) DeleteUser(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var email string
+	if err := tx.QueryRowContext(ctx, `SELECT lower(email) FROM users WHERE id = ?`, id).Scan(&email); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	for _, q := range []string{
+		`DELETE FROM users WHERE id IN (SELECT fake_user_id FROM larp_fake_users WHERE owner_id = ?)`,
+		`DELETE FROM users WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	for _, q := range []string{
+		`DELETE FROM login_codes WHERE lower(email) = ?`,
+		`DELETE FROM allowed_emails WHERE email = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, email); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // IsAllowed reports whether email (already normalized) is on the allowlist.
 func (s *Store) IsAllowed(ctx context.Context, email string) (bool, error) {
 	var n int

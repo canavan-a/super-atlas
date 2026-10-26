@@ -1,18 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Firebase settings for the Google Play build only, in the form the
-     google-services Gradle plugin would generate from the Firebase console's
-     google-services.json for com.superatlasapp (written by hand, as in
-     super-chat, so the sideload build has no Firebase at all). They identify
-     the Firebase project; they are not secrets and ship inside the app.
-
-     Empty until a Firebase project exists: Firebase then stays off and the
-     Play build gets no background notifications. release/release-play.sh
-     refuses to build until these are filled in:
-
-    <string name="google_app_id" translatable="false">1:…:android:…</string>
-    <string name="gcm_defaultSenderId" translatable="false">…</string>
-    <string name="google_api_key" translatable="false">…</string>
-    <string name="project_id" translatable="false">…</string>
--->
+<!-- Firebase settings for the Google Play build only (from the Firebase
+     console's google-services.json for com.superatlasapp), in the form the
+     google-services Gradle plugin would generate. Written by hand, as in
+     super-chat, so the sideload build has no Firebase at all. These identify
+     the Firebase project; they are not secrets and ship inside the app. -->
 <resources>
+    <string name="google_app_id" translatable="false">1:562256496798:android:28fb06f1a6e4aa6375138f</string>
+    <string name="gcm_defaultSenderId" translatable="false">562256496798</string>
+    <string name="google_api_key" translatable="false">AIzaSyAbNn5lrmtRCUMaO2BhABe9GmPmFnT0zXw</string>
+    <string name="google_crash_reporting_api_key" translatable="false">AIzaSyAbNn5lrmtRCUMaO2BhABe9GmPmFnT0zXw</string>
+    <string name="project_id" translatable="false">super-atlas</string>
+    <string name="google_storage_bucket" translatable="false">super-atlas.firebasestorage.app</string>
 </resources>

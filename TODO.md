@@ -1,12 +1,14 @@
 # Remaining work
 
 ## Deploy (the superchat host, `/etc/nixos`)
-- [x] `services.superatlas` in `modules/superchat.nix` (127.0.0.1:8090, `https://atlas.superbadger.io`, web client on) and the `super-atlas` flake input.
+- [x] `services.superatlas` in `modules/superchat.nix` (127.0.0.1:8090, `https://superatlas.lunargen.com`, web client on) and the `super-atlas` flake input.
 - [ ] Push this repo, then `nix flake update super-atlas` in `/etc/nixos` so the host picks up the allowlist.
 - [ ] Put the mail login on the box: `/etc/superatlas/env` with `SUPERATLAS_SMTP_EMAIL` and `SUPERATLAS_SMTP_APP_PASSWORD`, plus `SUPERATLAS_SMTP_HOST`/`_PORT` if not Gmail (e.g. `smtp.zoho.com`/`587`) (the service won't start without it).
-- [ ] Cloudflare tunnel: route `atlas.superbadger.io` → `http://localhost:8090`.
+- [x] Route `superatlas.lunargen.com` → `127.0.0.1:8090` (through the Super Matrix relay).
 - [ ] Deploy, check port 8090 is free first (`sudo ss -ltnp | grep 8090`), then `superatlas-admin allow <email>` for each person.
-- [ ] After `release/gen-keystore.sh`, put the key's SHA-256 in `androidCertSha256` so invite links open the app.
+- [x] The release key's SHA-256 in `androidCertSha256` so invite links open the app.
+- [ ] After the first Play upload, add Play's app signing key SHA-256 (Play Console → App integrity → App signing) to `androidCertSha256` too.
+- [x] The Firebase service account key on the box at `/etc/superatlas/fcm.json` (the service won't start without it now that `fcmCredentialsFile` is set).
 - [ ] Optional: `inputs.nixpkgs.follows = "nixpkgs"` on the `super-atlas` input to skip its second nixpkgs.
 
 ## App (`app/`)

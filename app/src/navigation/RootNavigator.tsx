@@ -9,13 +9,15 @@ import { splashHold } from '../logo/splashHold';
 import FriendsScreen from '../screens/FriendsScreen';
 import MapScreen from '../screens/MapScreen';
 import PermissionsGateScreen from '../screens/PermissionsGateScreen';
+import PrivacyPolicy from '../privacy/PrivacyPolicy';
 import SettingsScreen from '../screens/SettingsScreen';
 import SignInScreen from '../screens/SignInScreen';
 import { useTheme } from '../theme';
 
 const Stack = createNativeStackNavigator();
 
-// Five screens in all: Sign in, Permissions, Map (home), Friends, Settings.
+// Six screens in all: Sign in, Permissions, Map (home), Friends, Settings,
+// and the privacy policy (from Settings).
 export default function RootNavigator() {
   const theme = useTheme();
   const { status } = useAuth();
@@ -79,6 +81,7 @@ export default function RootNavigator() {
         })}
       />
       <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Privacy" component={PrivacyPolicy} options={{ title: 'Privacy policy' }} />
     </Stack.Navigator>
   );
 }

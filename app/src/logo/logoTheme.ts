@@ -57,14 +57,3 @@ export function toneColor(t: LogoTheme, u: number, w: number): string {
   const top = r[4];
   return rgbToHex([base[0] + w * (acc[0] - top[0]), base[1] + w * (acc[1] - top[1]), base[2] + w * (acc[2] - top[2])]);
 }
-
-/** What the shine moves toward: white on dark pages; on light pages the
- *  strokes are dark, so brightening would only fade them out — darken instead. */
-export function shineTarget(t: Pick<Theme, 'bg'>): string {
-  return isLightTheme(t) ? '#000000' : '#ffffff';
-}
-
-/** Blend a color toward the shine target by k (0..1). */
-export function shineColor(color: string, t: Pick<Theme, 'bg'>, k: number): string {
-  return rgbToHex(lerp(hexToRgb(color), hexToRgb(shineTarget(t)), k));
-}

@@ -1,10 +1,8 @@
 import React, {memo} from 'react';
-import {StyleSheet, View} from 'react-native';
-import Svg, {G, Path} from 'react-native-svg';
+import {StyleSheet} from 'react-native';
+import Svg, {Path} from 'react-native-svg';
 
 import {LOGO, ToneRuns} from './logoData';
-import {toneColor} from './logoTheme';
-import {useTheme} from '../theme';
 
 // The art's sub-pixels aren't square: in the terminal a sextant is half a cell
 // wide and a third of a cell tall, and a cell is about twice as tall as wide,
@@ -12,11 +10,9 @@ import {useTheme} from '../theme';
 export const PIXEL_W = 3;
 export const PIXEL_H = 4;
 
-/** Overall logo size in viewBox units: the stacked wordmark alone, as in
- * super-chat. (The map pin in logoData isn't drawn on the splash.) */
+/** The boot scroll's size in viewBox units: every layer shares its grid. */
 export const LOGO_W = LOGO.width * PIXEL_W;
-export const WORD_H = LOGO.word.rows * PIXEL_H;
-export const LOGO_H = WORD_H;
+export const LOGO_H = LOGO.height * PIXEL_H;
 
 // Adjacent rectangles overlap by a hair so no seams show between pixels when
 // the logo is scaled to a fractional size.
@@ -40,23 +36,6 @@ export function tonePath(t: ToneRuns): string {
   return d;
 }
 
-/** Merges tone groups that share a tone (same u and w) into one. */
-export function mergeTones(...groups: ToneRuns[][]): ToneRuns[] {
-  const merged = new Map<string, ToneRuns>();
-  for (const g of groups) {
-    for (const t of g) {
-      const key = `${t.u}/${t.w}`;
-      const m = merged.get(key);
-      if (m) m.runs = m.runs.concat(t.runs);
-      else merged.set(key, {u: t.u, w: t.w, runs: t.runs.slice()});
-    }
-  }
-  return Array.from(merged.values());
-}
-
-/** Every slice of the wordmark's tones merged, for drawing it in one piece. */
-export const WORD_TONES: ToneRuns[] = mergeTones(...LOGO.word.slices.map(s => s.tones));
-
 /** The runs of each tone clipped to the columns [x0, x1). Tones left empty are dropped. */
 export function sliceTones(tones: ToneRuns[], x0: number, x1: number): ToneRuns[] {
   const out: ToneRuns[] = [];
@@ -72,22 +51,47 @@ export function sliceTones(tones: ToneRuns[], x0: number, x1: number): ToneRuns[
   return out;
 }
 
-/** How many vertical strips the shine is cut into. */
-export const SHINE_STRIPS = 16;
+/** How many columns of paper each strip of the unrolling reveal holds. */
+export const STRIP_COLS = 4;
 
-/** The strips' column spans, tiling the logo's width exactly. */
-export const STRIP_SPANS: {x0: number; x1: number}[] = Array.from({length: SHINE_STRIPS}, (_, i) => ({
-  x0: Math.round((i * LOGO.width) / SHINE_STRIPS),
-  x1: Math.round(((i + 1) * LOGO.width) / SHINE_STRIPS),
-}));
+export interface PaperStrip {
+  x0: number;
+  x1: number;
+  /** how far open (0..1) the scroll is when this strip starts to show, and when it's fully shown */
+  from: number;
+  to: number;
+  text: ToneRuns[];
+  map: ToneRuns[];
+}
 
-/** Each strip's share of the wordmark. */
-export const WORD_STRIPS = STRIP_SPANS.map(s => ({...s, tones: sliceTones(WORD_TONES, s.x0, s.x1)}));
+/**
+ * The paper cut into strips from the middle out, each with the stretch of
+ * the unrolling over which a roller uncovers it: open by t, the paper shows
+ * LOGO.travel * t - LOGO.revealInset columns either side of the center.
+ */
+export const PAPER_STRIPS: PaperStrip[] = (() => {
+  const out: PaperStrip[] = [];
+  const {center, travel, revealInset, width} = LOGO;
+  const at = (dist: number) => Math.min(1, Math.max(0, (dist + revealInset) / travel));
+  for (let near = 0; near < width / 2; near += STRIP_COLS) {
+    const far = near + STRIP_COLS;
+    for (const [x0, x1] of [
+      [center - far, center - near],
+      [center + near, center + far],
+    ]) {
+      const text = sliceTones(LOGO.paperText, x0, x1);
+      const map = sliceTones(LOGO.paperMap, x0, x1);
+      if (!text.length && !map.length) continue;
+      const from = at(near);
+      out.push({x0, x1, from: Math.min(from, 0.999), to: Math.max(at(far), from + 0.001), text, map});
+    }
+  }
+  return out;
+})();
 
 // Every layer sits at the origin of its container and overlays its siblings.
 // (Without this the SVGs are flex children and *stack*: on the web an <svg>
-// in a flex column also shrinks to share the height, which squeezed the mark
-// to half size and pushed its details out of line with the shine's copy.)
+// in a flex column also shrinks to share the height.)
 const styles = StyleSheet.create({
   layer: {position: 'absolute', top: 0, left: 0},
 });
@@ -113,52 +117,3 @@ export const ToneLayer = memo(function ToneLayer({tones, fill, view, width, heig
     </Svg>
   );
 });
-
-interface FullProps {
-  fill: (t: ToneRuns) => string;
-  width: number;
-  height: number;
-}
-
-/** The whole logo (the stacked wordmark) in one SVG. */
-export const FullLogo = memo(function FullLogo({fill, width, height}: FullProps) {
-  return (
-    <Svg style={styles.layer} width={width} height={height} viewBox={`0 0 ${LOGO_W} ${LOGO_H}`}>
-      <G>
-        {WORD_TONES.map(t => (
-          <Path key={`w${t.u}/${t.w}`} d={tonePath(t)} fill={fill(t)} />
-        ))}
-      </G>
-    </Svg>
-  );
-});
-
-/** The logo at rest, in the current theme's colors (onboarding, lock screen). Sized by height: stacked, it's about twice as tall as wide. */
-export function LogoArt({height}: {height: number}): React.JSX.Element {
-  const theme = useTheme();
-  const width = (height * LOGO_W) / LOGO_H;
-  return (
-    <View style={{width, height}} accessible accessibilityLabel="Super Atlas">
-      <FullLogo fill={t => toneColor(theme, t.u, t.w)} width={width} height={height} />
-    </View>
-  );
-}
-
-/** "Super Atlas" on one line in the logo's own pixel lettering and theme colors. */
-export function LogoLine({height}: {height: number}): React.JSX.Element {
-  const theme = useTheme();
-  const viewW = LOGO.line.w * PIXEL_W;
-  const viewH = LOGO.line.h * PIXEL_H;
-  const width = (height * viewW) / viewH;
-  return (
-    <View style={{width, height}} accessible accessibilityRole="header" accessibilityLabel="Super Atlas">
-      <ToneLayer
-        tones={LOGO.line.tones}
-        fill={t => toneColor(theme, t.u, t.w)}
-        view={[0, 0, viewW, viewH]}
-        width={width}
-        height={height}
-      />
-    </View>
-  );
-}

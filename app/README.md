@@ -45,8 +45,10 @@ your network: `npm run android -- --extra-params -PapiUrl=http://192.168.1.20:80
 
 ## Launch splash and icons
 
-The art is generated, not drawn here. Edit `../art/mark.txt` or
-`../art/word.txt`, then:
+The art is generated, not drawn here. The launch splash is a scroll that
+unrolls to the stacked wordmark, rolls up, then unrolls to a world map; the
+launcher icon is the open scroll with the wordmark. Edit `../art/word.txt`
+(the lettering) or `../art/scroll_*.txt` (the paper, map and rollers), then:
 
     cd ../tools && go run ./appart              # -> src/logo/logoData.ts, launcher icons, public/ icons
     cd ../tools && go run ./appart -preview /tmp/out   # also PNG previews per theme

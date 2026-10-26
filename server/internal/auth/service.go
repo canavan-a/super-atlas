@@ -213,6 +213,12 @@ func (s *Service) GetUser(ctx context.Context, id string) (*User, error) {
 	return s.store.GetUserByID(ctx, id)
 }
 
+// DeleteAccount deletes userID's account and all its data, signing out every
+// device it was on.
+func (s *Service) DeleteAccount(ctx context.Context, userID string) error {
+	return s.store.DeleteUser(ctx, userID)
+}
+
 // RunJanitor deletes expired codes and sessions every hour until ctx ends.
 func (s *Service) RunJanitor(ctx context.Context) {
 	ticker := time.NewTicker(time.Hour)
