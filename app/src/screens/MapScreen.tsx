@@ -1,6 +1,6 @@
 import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import type { CameraRef, PressEventWithFeatures } from '@maplibre/maplibre-react-native';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import { MapChrome, initialsFor } from '../components/MapChrome';
@@ -22,6 +22,7 @@ export default function MapScreen() {
   const cameraRef = useRef<CameraRef>(null);
   const { locations, me, now, pendingCount, noFriends, selected, setSelectedId } = useMapData();
   const centeredOnce = useRef(false);
+  const [mapReady, setMapReady] = useState(false);
 
   const fitEveryone = (animate = true) => {
     const points: [number, number][] = locations.map((l) => [l.longitude, l.latitude]);
@@ -39,13 +40,14 @@ export default function MapScreen() {
     });
   };
 
-  // Open close in on your own position, as soon as there is one. "Fit
-  // everyone" zooms out to friends.
+  // Open close in on your own position, as soon as there is one and the map
+  // has loaded (a camera move sent before that is dropped, leaving the map
+  // zoomed all the way out). "Fit everyone" zooms out to friends.
   useEffect(() => {
-    if (centeredOnce.current || !me) return;
+    if (centeredOnce.current || !me || !mapReady) return;
     centeredOnce.current = true;
     cameraRef.current?.jumpTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM });
-  }, [me]);
+  }, [me, mapReady]);
 
   const onFriendPress = (e: NativeSyntheticEvent<PressEventWithFeatures>) => {
     const userId = e.nativeEvent.features?.[0]?.properties?.userId;
@@ -69,6 +71,7 @@ export default function MapScreen() {
         logo={false}
         attributionPosition={{ bottom: 8, left: 8 }}
         onPress={onMapPress}
+        onDidFinishLoadingMap={() => setMapReady(true)}
       >
         <Camera ref={cameraRef} />
         {/* You: a small dot with a soft halo, under friends' larger initialed
