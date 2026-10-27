@@ -8,6 +8,8 @@ import { isStale } from '../time';
 import { useMapData } from './useMapData';
 
 const FIT_PADDING = { top: 140, right: 80, bottom: 160, left: 80 };
+// "Fit everyone" also turns the map back north-up and flat.
+const NEUTRAL = { bearing: 0, pitch: 0 };
 
 // The browser's map, on maplibre-gl with the same basemaps, markers and
 // buttons as the Android map (MapScreen.tsx). It only ever shows friends:
@@ -28,12 +30,12 @@ export default function MapScreen() {
     const points = latest.current;
     if (!m || points.length === 0) return;
     if (points.length === 1) {
-      m.flyTo({ center: [points[0].longitude, points[0].latitude], zoom: 16, animate });
+      m.flyTo({ center: [points[0].longitude, points[0].latitude], zoom: 16, ...NEUTRAL, animate });
       return;
     }
     const bounds = new maplibregl.LngLatBounds();
     for (const p of points) bounds.extend([p.longitude, p.latitude]);
-    m.fitBounds(bounds, { padding: FIT_PADDING, animate });
+    m.fitBounds(bounds, { padding: FIT_PADDING, ...NEUTRAL, animate });
   };
 
   // Create the map once; tapping empty map closes the friend card.

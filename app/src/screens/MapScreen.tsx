@@ -11,6 +11,8 @@ import { useMapData } from './useMapData';
 const FIT_PADDING = { top: 140, right: 80, bottom: 160, left: 80 };
 // Street level: how close the map opens on you, and flies to a friend.
 const CLOSE_ZOOM = 16;
+// "Fit everyone" also turns the map back north-up and flat.
+const NEUTRAL = { bearing: 0, pitch: 0 };
 
 // The home screen: a full-screen map of you and your friends. Two buttons —
 // Friends (with a badge for requests waiting on you) and "fit everyone".
@@ -29,13 +31,14 @@ export default function MapScreen() {
     if (me) points.push([me.longitude, me.latitude]);
     if (points.length === 0) return;
     if (points.length === 1) {
-      cameraRef.current?.flyTo({ center: points[0], zoom: CLOSE_ZOOM, duration: animate ? 800 : 0 });
+      cameraRef.current?.flyTo({ center: points[0], zoom: CLOSE_ZOOM, ...NEUTRAL, duration: animate ? 800 : 0 });
       return;
     }
     const lngs = points.map((p) => p[0]);
     const lats = points.map((p) => p[1]);
     cameraRef.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
       padding: FIT_PADDING,
+      ...NEUTRAL,
       duration: animate ? 800 : 0,
     });
   };
