@@ -4,11 +4,12 @@ import { useLocationStream } from '../location/useLocationStream';
 
 // What both map screens (Android and web) show: friends' live positions,
 // filtered to current friends (the stream only ever adds people, so this
-// drops anyone just removed), the count of requests waiting on you, which
+// drops anyone just removed), your own position (Android only; null on the
+// web), the count of requests waiting on you, which
 // friend is tapped, and a clock that ticks each minute so "last seen" and
 // faded markers stay current.
 export function useMapData() {
-  const streamed = useLocationStream();
+  const { locations: streamed, me } = useLocationStream();
   const { friends } = useFriends();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -26,6 +27,7 @@ export function useMapData() {
 
   return {
     locations,
+    me,
     now,
     pendingCount: friends?.filter((f) => f.isIncomingRequest).length ?? 0,
     noFriends: friends !== null && friends.length === 0,

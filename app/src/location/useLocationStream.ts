@@ -1,21 +1,37 @@
 import * as Location from 'expo-location';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { FriendLocation, useFriendStream } from './friendStream';
 
 export type { FriendLocation };
 
+export type MyPosition = { latitude: number; longitude: number; accuracyM: number | null };
+
 // Friends' positions in, and this device's position out over the same
-// socket while the app is open. (useLocationStream.web.ts only receives.)
-export function useLocationStream(): FriendLocation[] {
+// socket while the app is open. The same fixes draw your own dot on the map,
+// so you see exactly what your friends see. (useLocationStream.web.ts only
+// receives.)
+export function useLocationStream(): { locations: FriendLocation[]; me: MyPosition | null } {
   const { locations, socket } = useFriendStream();
+  const [me, setMe] = useState<MyPosition | null>(null);
 
   useEffect(() => {
     let stopped = false;
     let watcher: Location.LocationSubscription | null = null;
+    const show = (position: Location.LocationObject) =>
+      setMe({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracyM: position.coords.accuracy,
+      });
     (async () => {
+      // The OS's cached fix, so the dot shows straight away instead of after
+      // the first fresh one.
+      const last = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (last && !stopped) show(last);
       watcher = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Balanced, distanceInterval: 15, timeInterval: 10000 },
         (position) => {
+          show(position);
           const ws = socket.current;
           if (ws?.readyState !== WebSocket.OPEN) return;
           ws.send(
@@ -36,5 +52,5 @@ export function useLocationStream(): FriendLocation[] {
     };
   }, [socket]);
 
-  return locations;
+  return { locations, me };
 }

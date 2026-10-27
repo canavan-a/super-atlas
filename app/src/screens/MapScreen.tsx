@@ -1,6 +1,5 @@
-import { Camera, GeoJSONSource, Layer, Map, UserLocation } from '@maplibre/maplibre-react-native';
+import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
 import type { CameraRef, PressEventWithFeatures } from '@maplibre/maplibre-react-native';
-import * as Location from 'expo-location';
 import { useEffect, useRef } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
@@ -10,6 +9,8 @@ import { isStale } from '../time';
 import { useMapData } from './useMapData';
 
 const FIT_PADDING = { top: 140, right: 80, bottom: 160, left: 80 };
+// Street level: how close the map opens on you, and flies to a friend.
+const CLOSE_ZOOM = 16;
 
 // The home screen: a full-screen map of you and your friends. Two buttons —
 // Friends (with a badge for requests waiting on you) and "fit everyone".
@@ -19,16 +20,15 @@ export default function MapScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const cameraRef = useRef<CameraRef>(null);
-  const { locations, now, pendingCount, noFriends, selected, setSelectedId } = useMapData();
-  const fittedOnce = useRef(false);
+  const { locations, me, now, pendingCount, noFriends, selected, setSelectedId } = useMapData();
+  const centeredOnce = useRef(false);
 
-  const fitEveryone = async (animate = true) => {
-    const me = await Location.getLastKnownPositionAsync().catch(() => null);
+  const fitEveryone = (animate = true) => {
     const points: [number, number][] = locations.map((l) => [l.longitude, l.latitude]);
-    if (me) points.push([me.coords.longitude, me.coords.latitude]);
+    if (me) points.push([me.longitude, me.latitude]);
     if (points.length === 0) return;
     if (points.length === 1) {
-      cameraRef.current?.flyTo({ center: points[0], zoom: 14, duration: animate ? 800 : 0 });
+      cameraRef.current?.flyTo({ center: points[0], zoom: CLOSE_ZOOM, duration: animate ? 800 : 0 });
       return;
     }
     const lngs = points.map((p) => p[0]);
@@ -39,28 +39,20 @@ export default function MapScreen() {
     });
   };
 
-  // Start on your own position, then frame everyone once their positions
-  // first arrive.
+  // Open close in on your own position, as soon as there is one. "Fit
+  // everyone" zooms out to friends.
   useEffect(() => {
-    (async () => {
-      const me = await Location.getLastKnownPositionAsync().catch(() => null);
-      if (me && !fittedOnce.current) {
-        cameraRef.current?.jumpTo({ center: [me.coords.longitude, me.coords.latitude], zoom: 13 });
-      }
-    })();
-  }, []);
-  useEffect(() => {
-    if (fittedOnce.current || locations.length === 0) return;
-    fittedOnce.current = true;
-    fitEveryone(false);
-  }, [locations.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (centeredOnce.current || !me) return;
+    centeredOnce.current = true;
+    cameraRef.current?.jumpTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM });
+  }, [me]);
 
   const onFriendPress = (e: NativeSyntheticEvent<PressEventWithFeatures>) => {
     const userId = e.nativeEvent.features?.[0]?.properties?.userId;
     const friend = locations.find((l) => l.userId === userId);
     if (!friend) return;
     setSelectedId(friend.userId);
-    cameraRef.current?.flyTo({ center: [friend.longitude, friend.latitude], zoom: 15, duration: 800 });
+    cameraRef.current?.flyTo({ center: [friend.longitude, friend.latitude], zoom: CLOSE_ZOOM, duration: 800 });
   };
 
   const onMapPress = (e: NativeSyntheticEvent<any>) => {
@@ -79,7 +71,33 @@ export default function MapScreen() {
         onPress={onMapPress}
       >
         <Camera ref={cameraRef} />
-        <UserLocation accuracy heading />
+        {/* You: a small dot with a soft halo, under friends' larger initialed
+            markers so they stay tappable. */}
+        <GeoJSONSource
+          id="me"
+          data={{
+            type: 'FeatureCollection',
+            features: me
+              ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [me.longitude, me.latitude] } }]
+              : [],
+          }}
+        >
+          <Layer
+            id="me-halo"
+            type="circle"
+            paint={{ 'circle-radius': 22, 'circle-color': theme.primary, 'circle-opacity': 0.2 }}
+          />
+          <Layer
+            id="me-dot"
+            type="circle"
+            paint={{
+              'circle-radius': 8,
+              'circle-color': theme.primary,
+              'circle-stroke-width': 3,
+              'circle-stroke-color': theme.markerStroke,
+            }}
+          />
+        </GeoJSONSource>
         <GeoJSONSource
           id="friends"
           data={{

@@ -28,7 +28,7 @@ export default function MapScreen() {
     const points = latest.current;
     if (!m || points.length === 0) return;
     if (points.length === 1) {
-      m.flyTo({ center: [points[0].longitude, points[0].latitude], zoom: 14, animate });
+      m.flyTo({ center: [points[0].longitude, points[0].latitude], zoom: 16, animate });
       return;
     }
     const bounds = new maplibregl.LngLatBounds();
@@ -78,7 +78,7 @@ export default function MapScreen() {
           const friend = latest.current.find((f) => f.userId === l.userId);
           if (!friend) return;
           setSelectedId(friend.userId);
-          m.flyTo({ center: [friend.longitude, friend.latitude], zoom: 15 });
+          m.flyTo({ center: [friend.longitude, friend.latitude], zoom: 16 });
         });
         marker = new maplibregl.Marker({ element: el }).setLngLat([l.longitude, l.latitude]).addTo(m);
         markers.current.set(l.userId, marker);
