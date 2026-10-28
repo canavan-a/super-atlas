@@ -4,7 +4,8 @@ import { ApiError, apiJson, clearToken, getToken, setSignedOutHandler, setToken 
 import { unregisterBackgroundLocationTask } from '../location/backgroundTask';
 import { startNotifications, stopNotifications } from '../notifications';
 
-export type User = { id: string; email: string; displayName: string };
+// avatarId is the profile picture's id (components/Avatar), unset for none.
+export type User = { id: string; email: string; displayName: string; avatarId?: string };
 
 type VerifyResult = 'signedIn' | 'needsName';
 
@@ -15,6 +16,8 @@ type AuthState = {
   requestCode: (email: string) => Promise<void>;
   verify: (email: string, code: string, displayName?: string) => Promise<VerifyResult>;
   setGhostMode: (on: boolean) => Promise<void>;
+  /** Uploads the image at uri (a picked photo) as the profile picture; null removes it. */
+  setAvatar: (uri: string | null) => Promise<void>;
   logout: () => Promise<void>;
   /** Deletes the account and all its data on the server, then signs out here. */
   deleteAccount: () => Promise<void>;
@@ -110,6 +113,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setAvatar = useCallback(async (uri: string | null) => {
+    let avatarId: string | undefined;
+    if (uri) {
+      // The server crops, shrinks and re-encodes it, so the original goes
+      // up as it is.
+      const photo = await (await fetch(uri)).blob();
+      ({ avatarId } = await apiJson<{ avatarId: string }>('/me/avatar', {
+        method: 'PUT',
+        body: photo,
+        headers: { 'Content-Type': photo.type || 'image/jpeg' },
+      }));
+    } else {
+      await apiJson('/me/avatar', { method: 'DELETE' });
+    }
+    setUser((u) => {
+      if (!u) return u;
+      const next = { ...u, avatarId };
+      AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   const logout = useCallback(async () => {
     await apiJson('/auth/logout', { method: 'POST' }).catch(() => {});
     await signOutLocally();
@@ -123,8 +148,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [signOutLocally]);
 
   const value = useMemo(
-    () => ({ status, user, ghostMode, requestCode, verify, setGhostMode, logout, deleteAccount }),
-    [status, user, ghostMode, requestCode, verify, setGhostMode, logout, deleteAccount]
+    () => ({ status, user, ghostMode, requestCode, verify, setGhostMode, setAvatar, logout, deleteAccount }),
+    [status, user, ghostMode, requestCode, verify, setGhostMode, setAvatar, logout, deleteAccount]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

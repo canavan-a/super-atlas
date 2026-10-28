@@ -1,9 +1,10 @@
-import { Camera, GeoJSONSource, Layer, Map } from '@maplibre/maplibre-react-native';
-import type { CameraRef, PressEventWithFeatures } from '@maplibre/maplibre-react-native';
+import { Camera, GeoJSONSource, Layer, Map, Marker } from '@maplibre/maplibre-react-native';
+import type { CameraRef } from '@maplibre/maplibre-react-native';
 import { useEffect, useRef, useState } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
-import { MapChrome, initialsFor } from '../components/MapChrome';
+import { Avatar } from '../components/Avatar';
+import { MapChrome } from '../components/MapChrome';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
 import { useMapData } from './useMapData';
@@ -52,8 +53,7 @@ export default function MapScreen() {
     cameraRef.current?.jumpTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM });
   }, [me, mapReady]);
 
-  const onFriendPress = (e: NativeSyntheticEvent<PressEventWithFeatures>) => {
-    const userId = e.nativeEvent.features?.[0]?.properties?.userId;
+  const onFriendPress = (userId: string) => {
     const friend = locations.find((l) => l.userId === userId);
     if (!friend) return;
     setSelectedId(friend.userId);
@@ -104,47 +104,19 @@ export default function MapScreen() {
             }}
           />
         </GeoJSONSource>
-        <GeoJSONSource
-          id="friends"
-          data={{
-            type: 'FeatureCollection',
-            features: locations.map((l) => ({
-              type: 'Feature',
-              id: l.userId,
-              geometry: { type: 'Point', coordinates: [l.longitude, l.latitude] },
-              properties: {
-                userId: l.userId,
-                initials: initialsFor(l.displayName),
-                stale: isStale(l.recordedAt, now),
-              },
-            })),
-          }}
-          onPress={onFriendPress}
-        >
-          <Layer
-            id="friend-points"
-            type="circle"
-            paint={{
-              'circle-radius': 15,
-              'circle-color': ['case', ['get', 'stale'], theme.staleMarker, theme.friendMarker],
-              'circle-stroke-width': 2,
-              'circle-stroke-color': theme.markerStroke,
-              'circle-opacity': ['case', ['get', 'stale'], 0.7, 1],
-            }}
-          />
-          <Layer
-            id="friend-initials"
-            type="symbol"
-            layout={{
-              'text-field': ['get', 'initials'],
-              'text-font': ['Noto Sans Bold'],
-              'text-size': 12,
-              'text-allow-overlap': true,
-              'text-ignore-placement': true,
-            }}
-            paint={{ 'text-color': theme.friendMarkerText }}
-          />
-        </GeoJSONSource>
+        {/* Friends: their profile picture, or their initials, in a ringed
+            circle (Avatar), faded once their position is old. */}
+        {locations.map((l) => (
+          <Marker key={l.userId} id={`friend-${l.userId}`} lngLat={[l.longitude, l.latitude]} onPress={() => onFriendPress(l.userId)}>
+            <Avatar
+              name={l.displayName}
+              avatarId={l.avatarId}
+              size={30}
+              stale={isStale(l.recordedAt, now)}
+              style={[styles.marker, { borderColor: theme.markerStroke }]}
+            />
+          </Marker>
+        ))}
       </Map>
 
       <MapChrome
@@ -162,4 +134,5 @@ const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: theme.bg },
     map: { flex: 1 },
+    marker: { borderWidth: 2 },
   });

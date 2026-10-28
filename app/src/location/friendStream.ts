@@ -5,6 +5,7 @@ import { WS_BASE_URL, getToken } from '../api/client';
 export type FriendLocation = {
   userId: string;
   displayName: string;
+  avatarId?: string;
   latitude: number;
   longitude: number;
   accuracyM?: number;
@@ -18,6 +19,7 @@ function toFriendLocation(data: any): FriendLocation {
   return {
     userId: data.userId,
     displayName: data.displayName ?? '',
+    avatarId: data.avatarId || undefined,
     latitude: data.latitude,
     longitude: data.longitude,
     accuracyM: data.accuracyM,

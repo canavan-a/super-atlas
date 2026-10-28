@@ -27,6 +27,11 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.uimanager.ViewManager
+import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.ActivityTransition
+import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.ActivityTransitionResult
+import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
@@ -50,24 +55,35 @@ import org.json.JSONObject
  * While you're still, there's one geofence around where you stopped and
  * nothing else running. Walking or driving out of it wakes MotionReceiver
  * (even with the app closed), which starts MotionService: a location
- * foreground service that sends a fix every ~15 s while you move. Once
+ * foreground service that sends a fix every ~5 s while you move. Once
  * you've stayed within STILL_RADIUS_M for STILL_MS it drops a new geofence
  * where you are and stops itself. A geofence exit is one of the few events
  * Android lets start a location foreground service from the background,
  * which is why this is native: expo-location's task won't start its service
  * unless the app is open.
  *
- * Turned on from src/location/backgroundTask.ts once background location is
- * granted (it hands over the session token; the server URL is baked in), off
- * on sign-out. The OS-scheduled background task there stays as a fallback and
- * re-arms this if the geofence was lost (location switched off, Play
- * services reset); MotionReceiver re-arms it after a reboot or an update.
- * Needs Google Play services for geofencing; without them this does nothing
- * and the fallback is all there is.
+ * With the app closed Android only checks geofences every couple of
+ * minutes, which is a kilometre or two into a drive. So when the "Physical
+ * activity" permission is granted, Activity Recognition starts it too: the
+ * motion sensors notice getting into a car or onto a bike within about a
+ * minute (also an allowed background start). Walking is left to the
+ * geofence, since 150 m on foot takes about as long as the geofence does,
+ * and pacing around the house shouldn't count as a trip.
+ *
+ * Turned on from src/location/motion.ts once background location is granted
+ * (it hands over the session token; the server URL is baked in), off on
+ * sign-out. The OS-scheduled background task in backgroundTask.ts stays as a
+ * fallback and re-arms this if the geofence was lost (location switched off,
+ * Play services reset); MotionReceiver re-arms it after a reboot or an
+ * update. Needs Google Play services; without them this does nothing and the
+ * fallback is all there is.
  */
 object MotionTracker {
   private const val TAG = "MotionTracker"
   const val ACTION_GEOFENCE = "com.superatlasapp.MOTION_GEOFENCE"
+  const val ACTION_ACTIVITY = "com.superatlasapp.MOTION_ACTIVITY"
+  // Getting into these starts tracking straight away.
+  val TRIP_ACTIVITIES = listOf(DetectedActivity.IN_VEHICLE, DetectedActivity.ON_BICYCLE)
   private const val PREFS = "superatlas.motion"
   private const val KEY_TOKEN = "token"
   private const val FENCE_ID = "superatlas-still"
@@ -90,15 +106,22 @@ object MotionTracker {
   fun disable(context: Context) {
     prefs(context).edit().clear().apply()
     LocationServices.getGeofencingClient(context).removeGeofences(geofenceIntent(context))
+    try {
+      ActivityRecognition.getClient(context).removeActivityTransitionUpdates(activityIntent(context))
+    } catch (e: SecurityException) {
+      // never registered: the permission was never granted
+    }
     context.stopService(Intent(context, MotionService::class.java))
   }
 
   /**
-   * Puts the geofence around the current position, unless you're already
-   * being tracked as moving. Safe to call any time; [done] runs either way.
+   * Listens for trips starting, and puts the geofence around the current
+   * position unless you're already being tracked as moving. Safe to call any
+   * time; [done] runs either way.
    */
   @SuppressLint("MissingPermission") // checked by hasBackgroundLocation
   fun arm(context: Context, done: () -> Unit = {}) {
+    if (isEnabled(context) && hasBackgroundLocation(context)) watchActivity(context)
     if (!isEnabled(context) || MotionService.running || !hasBackgroundLocation(context)) {
       done()
       return
@@ -146,6 +169,39 @@ object MotionTracker {
           PendingIntent.FLAG_UPDATE_CURRENT or
               (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0))
 
+  /** Asks Activity Recognition to tell MotionReceiver when a trip starts.
+   *  Registering again replaces the earlier request. */
+  @SuppressLint("MissingPermission") // checked by hasActivityRecognition
+  private fun watchActivity(context: Context) {
+    if (!hasActivityRecognition(context)) return
+    val transitions =
+        TRIP_ACTIVITIES.map {
+          ActivityTransition.Builder()
+              .setActivityType(it)
+              .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+              .build()
+        }
+    ActivityRecognition.getClient(context)
+        .requestActivityTransitionUpdates(ActivityTransitionRequest(transitions), activityIntent(context))
+        .addOnFailureListener { Log.w(TAG, "Could not watch for trips", it) }
+  }
+
+  private fun activityIntent(context: Context): PendingIntent =
+      PendingIntent.getBroadcast(
+          context,
+          1,
+          Intent(context, MotionReceiver::class.java).setAction(ACTION_ACTIVITY),
+          // Play services fills in the result, so it has to be mutable.
+          PendingIntent.FLAG_UPDATE_CURRENT or
+              (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0))
+
+  /** "Physical activity", a runtime permission from Android 10; before
+   *  that it's granted at install. */
+  fun hasActivityRecognition(context: Context): Boolean =
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+          ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
+              PackageManager.PERMISSION_GRANTED
+
   fun hasBackgroundLocation(context: Context): Boolean {
     val permission =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) Manifest.permission.ACCESS_BACKGROUND_LOCATION
@@ -186,8 +242,8 @@ object MotionTracker {
   }
 }
 
-/** Geofence exits (start tracking), and reboots and app updates (which
- *  clear every geofence, so re-arm). */
+/** Geofence exits and trips starting (start tracking), and reboots and app
+ *  updates (which clear both, so re-arm). */
 class MotionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     when (intent.action) {
@@ -198,12 +254,30 @@ class MotionReceiver : BroadcastReceiver() {
           MotionService.start(context)
         }
       }
+      MotionTracker.ACTION_ACTIVITY -> {
+        if (!ActivityTransitionResult.hasResult(intent)) return
+        val result = ActivityTransitionResult.extractResult(intent) ?: return
+        val now = SystemClock.elapsedRealtimeNanos()
+        val tripStarted =
+            result.transitionEvents.any {
+              it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER &&
+                  it.activityType in MotionTracker.TRIP_ACTIVITIES &&
+                  // Events can arrive late (say, queued across a restart);
+                  // an old one isn't a trip starting now.
+                  now - it.elapsedRealTimeNanos < STALE_NANOS
+            }
+        if (tripStarted && MotionTracker.isEnabled(context)) MotionService.start(context)
+      }
       Intent.ACTION_BOOT_COMPLETED,
       Intent.ACTION_MY_PACKAGE_REPLACED -> {
         val pending = goAsync()
         MotionTracker.arm(context) { pending.finish() }
       }
     }
+  }
+
+  companion object {
+    private const val STALE_NANOS = 5 * 60 * 1_000_000_000L
   }
 }
 
@@ -323,8 +397,10 @@ class MotionService : Service() {
     private const val TAG = "MotionService"
     private const val CH_MOTION = "superatlas-motion"
     private const val NID_MOTION = 0x5a02
-    private const val INTERVAL_MS = 15_000L
-    private const val MIN_DISTANCE_M = 20f
+    // About as often as Life360 sends on the move: a car at 50 km/h moves
+    // ~70 m between fixes.
+    private const val INTERVAL_MS = 5_000L
+    private const val MIN_DISTANCE_M = 10f
     // Worse than this is a cell-tower guess, not a position.
     private const val MAX_ACCURACY_M = 100f
     // Still means staying within this of one spot for this long: longer
@@ -358,7 +434,7 @@ class MotionService : Service() {
   }
 }
 
-/** JS control of MotionTracker (src/location/backgroundTask.ts). */
+/** JS control of MotionTracker (src/location/motion.ts). */
 class MotionModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   override fun getName() = "Motion"
 

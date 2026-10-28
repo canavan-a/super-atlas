@@ -28,8 +28,11 @@ export function useLocationStream(): { locations: FriendLocation[]; me: MyPositi
       // the first fresh one.
       const last = await Location.getLastKnownPositionAsync().catch(() => null);
       if (last && !stopped) show(last);
+      // GPS every few seconds while the app is open, so friends watching see
+      // you move near live (the screen is on anyway, so it costs little
+      // extra). Closed, MotionTracker.kt takes over while you're moving.
       watcher = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, distanceInterval: 15, timeInterval: 10000 },
+        { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 3000 },
         (position) => {
           show(position);
           const ws = socket.current;

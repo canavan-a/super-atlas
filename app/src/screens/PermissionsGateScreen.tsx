@@ -28,6 +28,7 @@ export default function PermissionsGateScreen({ permissions }: { permissions: Pe
       </Text>
       <Text style={styles.body}>
         Allow location access, then choose "Allow all the time" so your friends still see you when the app is closed.
+        Allowing physical activity next lets Super Atlas notice straight away when you start driving or cycling.
       </Text>
       <Button
         label={permissions.mustOpenSettings ? 'Open Settings' : 'Continue'}

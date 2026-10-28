@@ -1,7 +1,8 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { MapChrome, initialsFor } from '../components/MapChrome';
+import { avatarUrl, initialsFor } from '../components/Avatar';
+import { MapChrome } from '../components/MapChrome';
 import type { FriendLocation } from '../location/friendStream';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
@@ -115,10 +116,10 @@ export default function MapScreen() {
   );
 }
 
-// The same marker as the Android map: a circle with the friend's initials,
-// faded once their position is over an hour old.
+// The same marker as the Android map (Avatar): a circle with the friend's
+// profile picture or initials, faded once their position is over an hour old.
 function styleMarker(el: HTMLElement, l: FriendLocation, theme: Theme, stale: boolean) {
-  el.textContent = initialsFor(l.displayName);
+  el.textContent = l.avatarId ? '' : initialsFor(l.displayName);
   el.title = l.displayName;
   el.setAttribute('aria-label', l.displayName || 'Friend');
   Object.assign(el.style, {
@@ -126,7 +127,10 @@ function styleMarker(el: HTMLElement, l: FriendLocation, theme: Theme, stale: bo
     height: '30px',
     borderRadius: '15px',
     border: `2px solid ${theme.markerStroke}`,
-    background: stale ? theme.staleMarker : theme.friendMarker,
+    backgroundColor: stale ? theme.staleMarker : theme.friendMarker,
+    backgroundImage: l.avatarId ? `url("${avatarUrl(l.avatarId)}")` : 'none',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
     opacity: stale ? '0.7' : '1',
     color: theme.friendMarkerText,
     font: '700 12px system-ui, sans-serif',

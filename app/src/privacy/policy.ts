@@ -3,7 +3,7 @@
 // super-chat. Keep it in step with what the server and app actually do, and
 // update UPDATED when it changes.
 
-export const UPDATED = '2026-10-25';
+export const UPDATED = '2026-10-28';
 export const CONTACT = 'aidan@lunargen.com';
 
 /** Inline **bold** is the only markup, in paragraphs and list items. */
@@ -19,7 +19,7 @@ export const POLICY: PolicySection[] = [
     title: 'Summary',
     blocks: [
       {
-        p: 'Super Atlas shows your location on a map to the friends you choose, and theirs to you. To do that, our server keeps your email address, the name you pick, your friends list and your most recent location. Nothing else.',
+        p: 'Super Atlas shows your location on a map to the friends you choose, and theirs to you. To do that, our server keeps your email address, the name you pick, your profile photo if you add one, your friends list and your most recent location. Nothing else.',
       },
       {
         p: 'We do not sell, rent or share your data, and we never will. There are no ads, no analytics and no tracking, and your location is never used for anything but showing it to your friends.',
@@ -33,14 +33,15 @@ export const POLICY: PolicySection[] = [
         list: [
           '**Email address.** Used to sign you in with a one-time code and for friends to find you. We never send you anything else.',
           '**Display name.** The name you choose when you sign up, shown to your friends and to anyone you send a friend request or invite link.',
-          '**Location.** Your device sends its position while the app is open. If you allow "Allow all the time", it also sends it every 15 seconds or so while you\'re moving (Android shows a notification while it does) and every 15 minutes or so otherwise. The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
+          "**Profile photo (optional).** If you add one in Settings, we keep a small square copy (256 × 256), re-made on our server so it carries none of the original photo's details, such as where it was taken. Your friends and anyone you have a friend request with see it; without one, they see your initials. Removing it in Settings deletes it.",
+          '**Location.** Your device sends its position while the app is open. If you allow "Allow all the time", it also sends it every few seconds while you\'re moving (Android shows a notification while it does) and every 15 minutes or so otherwise. If you allow physical activity, the phone\'s motion sensors are used to notice when a drive or bike ride starts; that stays on the device and is never sent to the server. The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
           "**Friends.** Who you're friends with and any pending friend requests, plus your personal invite link, which you can reset at any time.",
           '**Sign-in sessions.** One per signed-in device, stored only as a scrambled (hashed) token.',
           '**Notification token (Google Play version only).** A device token from Google, so we can tell you about friend requests while the app is closed.',
         ],
       },
       {
-        p: 'We do not collect your contacts, photos, phone number, advertising identifiers, analytics or crash reports.',
+        p: 'We do not collect your contacts, other photos, phone number, advertising identifiers, analytics or crash reports.',
       },
     ],
   },
@@ -100,8 +101,8 @@ export const POLICY: PolicySection[] = [
         list: [
           '**Location:** only your latest position is kept, and each update replaces the last.',
           '**Sign-in codes:** deleted once expired. **Sessions** and their notification tokens: deleted when you sign out, or after 90 days unused.',
-          '**Everything else** (email, name, friends, latest location) is kept while you have an account.',
-          `**Deleting your account:** Settings → Delete account deletes your account and all its data from the server straight away: your email, name, friends and friend requests, location, sessions and notification tokens. Your friends stop receiving your location (a map already open keeps your last position until it reloads), and every device you were signed in on is signed out. If you can't sign in any more, email ${CONTACT} from the address you signed up with and we will do it for you within 30 days.`,
+          '**Everything else** (email, name, profile photo, friends, latest location) is kept while you have an account.',
+          `**Deleting your account:** Settings → Delete account deletes your account and all its data from the server straight away: your email, name, profile photo, friends and friend requests, location, sessions and notification tokens. Your friends stop receiving your location (a map already open keeps your last position until it reloads), and every device you were signed in on is signed out. If you can't sign in any more, email ${CONTACT} from the address you signed up with and we will do it for you within 30 days. Step-by-step instructions are at superatlas.lunargen.com/delete-account.`,
         ],
       },
     ],

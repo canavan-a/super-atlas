@@ -1,4 +1,5 @@
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import {
@@ -13,6 +14,7 @@ import {
   updatesSupported,
 } from '../appUpdater';
 import { useAuth } from '../auth/AuthContext';
+import { Avatar } from '../components/Avatar';
 import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Button, Card } from '../components/ui';
 import {
@@ -47,12 +49,14 @@ type UpdateState =
   | { kind: 'error'; message: string };
 
 // Deliberately short: theme, notifications (sideload), updates (sideload),
-// sign out, deleting the account, and the privacy policy.
+// your profile photo, sign out, deleting the account, and the privacy policy.
 export default function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
   const { themeName, setThemeName } = useThemeSetting();
-  const { user, logout, deleteAccount } = useAuth();
+  const { user, setAvatar, logout, deleteAccount } = useAuth();
   const [version, setVersion] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateState>({ kind: 'idle' });
   const theme = useTheme();
   const [bgNotify, setBgNotify] = useState(false);
@@ -129,6 +133,32 @@ export default function SettingsScreen() {
     });
     return () => sub.remove();
   }, [update]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The system photo picker, cropped square; it needs no permission. Without
+  // a photo, friends see your initials.
+  const changePhoto = async () => {
+    setPhotoError(null);
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    }).catch(() => null);
+    const uri = picked && !picked.canceled ? picked.assets?.[0]?.uri : undefined;
+    if (!uri) return;
+    await savePhoto(uri);
+  };
+
+  const savePhoto = async (uri: string | null) => {
+    setPhotoBusy(true);
+    try {
+      await setAvatar(uri);
+    } catch (e: any) {
+      setPhotoError(e.message ?? 'Could not update your photo');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   const confirmSignOut = () =>
     confirmThen('Sign out?', 'Your friends will stop seeing you until you sign back in.', 'Sign out', () => logout());
@@ -233,10 +263,25 @@ export default function SettingsScreen() {
 
       <Text style={styles.section}>Account</Text>
       {user && (
-        <Text style={styles.account}>
-          {user.displayName} · {user.email}
-        </Text>
+        <View style={styles.row}>
+          <Avatar name={user.displayName} avatarId={user.avatarId} size={56} />
+          <View style={styles.rowText}>
+            <Text style={styles.account}>{user.displayName}</Text>
+            <Text style={styles.hint}>{user.email}</Text>
+            <View style={styles.photoLinks}>
+              <Pressable onPress={changePhoto} disabled={photoBusy} hitSlop={8} accessibilityRole="button">
+                <Text style={styles.photoLink}>{photoBusy ? 'Saving…' : user.avatarId ? 'Change photo' : 'Add a photo'}</Text>
+              </Pressable>
+              {user.avatarId && !photoBusy && (
+                <Pressable onPress={() => savePhoto(null)} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.photoLink}>Remove</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
       )}
+      {photoError && <Text style={styles.error}>{photoError}</Text>}
       <Button label="Sign out" onPress={confirmSignOut} variant="danger" style={styles.buttonGap} />
       <Button
         label="Delete account"
@@ -287,6 +332,8 @@ const makeStyles = (theme: Theme) =>
     swatchDot: { width: 20, height: 28 },
     swatchLabel: { fontSize: 12, fontWeight: '600', color: theme.text },
     account: { color: theme.text, fontSize: 15 },
+    photoLinks: { flexDirection: 'row', gap: 16, marginTop: 6 },
+    photoLink: { color: theme.primary, fontSize: 14, fontWeight: '600' },
     buttonGap: { marginTop: 16 },
     error: { color: theme.danger, marginTop: 10 },
     updateHint: { marginTop: 10 },

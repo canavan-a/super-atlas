@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/canavan-a/super-atlas/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/avatar"
 	"github.com/canavan-a/super-atlas/server/internal/config"
 	"github.com/canavan-a/super-atlas/server/internal/friends"
 	"github.com/canavan-a/super-atlas/server/internal/location"
@@ -19,6 +20,7 @@ type Deps struct {
 	Config           *config.Config
 	AuthService      *auth.Service
 	AuthHandlers     *auth.Handlers
+	AvatarHandlers   *avatar.Handlers
 	FriendService    *friends.Service
 	FriendHandlers   *friends.Handlers
 	LocationHandlers *location.Handlers
@@ -63,6 +65,8 @@ func NewRouter(d Deps) http.Handler {
 		r.With(limit(30, 10*time.Minute)).Post("/verify", d.AuthHandlers.Verify)
 	})
 	r.With(limit(60, time.Minute)).Get("/invites/{code}", d.FriendHandlers.InvitePreview)
+	// Profile pictures by their random id; see avatar.Handlers.Serve.
+	r.With(limit(600, time.Minute)).Get("/avatars/{id}", d.AvatarHandlers.Serve)
 
 	r.Group(func(r chi.Router) {
 		// Ceilings on everything, per IP before checking the token (so junk
@@ -74,6 +78,8 @@ func NewRouter(d Deps) http.Handler {
 
 		r.Get("/me", d.AuthHandlers.Me)
 		r.Delete("/me", d.AuthHandlers.DeleteMe)
+		r.With(limitUser(20, time.Hour)).Put("/me/avatar", d.AvatarHandlers.Put)
+		r.Delete("/me/avatar", d.AvatarHandlers.Delete)
 		r.Post("/auth/logout", d.AuthHandlers.Logout)
 
 		r.Route("/friends", func(r chi.Router) {

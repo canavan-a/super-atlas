@@ -21,6 +21,11 @@
 - [x] Notifications on friend requests (sideload: background connection; Play: FCM).
 - [ ] Loading/error states polish (friends list, map) and pull-to-refresh.
 - [ ] iOS: not set up at all (no `ios/` project).
+- [ ] iOS motion-triggered sharing: a Swift native module named `Motion` with the same `enable(token)`/`disable()` as Android's `MotionTracker.kt`, so `app/src/location/motion.ts` works unchanged. iOS can't let CoreMotion wake the app, so the wake-ups come from Core Location instead:
+  - Still: a `CLCircularRegion` (~150 m) where you stopped, plus significant-location-change monitoring; both relaunch a closed app.
+  - Woken: start `CLLocationManager` updates (`allowsBackgroundLocationUpdates`, `UIBackgroundModes: location`), send a fix every few seconds to `/locations/batch`.
+  - Stop: `CMMotionActivityManager` reporting `stationary` (or the same 75 m / 5 min rule as Android), then a new region and stop updates.
+  - Permissions: "Always" location, then Motion & Fitness (`NSMotionUsageDescription`), asked from `requestActivityPermission()` in `motion.ts` (its iOS branch is a stub).
 
 ## Server (`server/`)
 - [x] Invite-only sign-in: an email allowlist managed with `superatlas-admin`.

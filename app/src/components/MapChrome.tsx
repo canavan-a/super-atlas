@@ -7,14 +7,6 @@ import { timeAgo } from '../time';
 import { BackgroundLocationBanner } from './BackgroundLocationBanner';
 import { Icon } from './Icon';
 
-export function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const first = parts[0][0] ?? '';
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
-  return (first + last).toUpperCase();
-}
-
 // Everything drawn over the map, shared by the Android map (MapScreen.tsx)
 // and the web one (MapScreen.web.tsx): the Friends button with its badge for
 // requests waiting on you, the "fit everyone" button, the card for a tapped

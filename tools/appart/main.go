@@ -7,6 +7,7 @@
 //
 //	cd tools && go run ./appart                      # writes into ../app
 //	cd tools && go run ./appart -preview /tmp/out    # also renders PNG previews
+//	cd tools && go run ./appart -marketplace ../marketplace-assets  # Play graphics
 //
 // It reads art/word.txt and the scroll's layers, art/scroll_paper.txt,
 // scroll_map.txt and scroll_rollers.txt (one 96 x 72 grid), and writes:
@@ -202,6 +203,7 @@ func main() {
 	artDir := flag.String("art", "../art", "the art directory")
 	app := flag.String("app", "../app", "the app directory")
 	preview := flag.String("preview", "", "also render PNG previews into this directory")
+	market := flag.String("marketplace", "", "also render the Google Play graphics into this directory")
 	flag.Parse()
 
 	word, slices, err := readArt(filepath.Join(*artDir, "word.txt"))
@@ -229,6 +231,9 @@ func main() {
 	must(writeWebIcons(filepath.Join(*app, "public"), pals["dark"], s.launcher))
 	if *preview != "" {
 		must(writePreviews(*preview, pals, s))
+	}
+	if *market != "" {
+		must(writeMarketplace(*market, pals["dark"], s))
 	}
 	fmt.Println("generated logo data, palette and icons from", *artDir)
 }

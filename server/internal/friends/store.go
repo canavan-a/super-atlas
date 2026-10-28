@@ -25,6 +25,7 @@ type FriendView struct {
 	FriendshipID string `json:"friendshipId"`
 	FriendID     string `json:"friendId"`
 	DisplayName  string `json:"displayName"`
+	AvatarID     string `json:"avatarId,omitempty"`
 	Status       string `json:"status"`
 	// IsIncomingRequest is true if this pending friendship was sent *to* the caller.
 	IsIncomingRequest bool `json:"isIncomingRequest"`
@@ -99,12 +100,13 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 // joined with the other party's public info.
 func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT f.id, f.addressee_id, f.status, u.id, u.display_name,
+		SELECT f.id, f.addressee_id, f.status, u.id, u.display_name, COALESCE(a.id, ''),
 		       CASE WHEN f.status = 'accepted' AND COALESCE(us.sharing_paused, 0) = 0 THEN l.recorded_at END
 		FROM friendships f
 		JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
 		LEFT JOIN user_settings us ON us.user_id = u.id
 		LEFT JOIN locations l ON l.user_id = u.id
+		LEFT JOIN avatars a ON a.user_id = u.id
 		WHERE f.requester_id = ? OR f.addressee_id = ?
 		ORDER BY u.display_name COLLATE NOCASE
 	`, userID, userID, userID)
@@ -118,7 +120,7 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 		var addresseeID string
 		var lastSeen sql.NullString
 		var v FriendView
-		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &lastSeen); err != nil {
+		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &v.AvatarID, &lastSeen); err != nil {
 			return nil, err
 		}
 		v.IsIncomingRequest = v.Status == "pending" && addresseeID == userID

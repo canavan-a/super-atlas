@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { Avatar } from '../components/Avatar';
 import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Icon } from '../components/Icon';
 import { Button, Card, TextField } from '../components/ui';
@@ -128,6 +129,7 @@ export default function FriendsScreen() {
           <Text style={styles.section}>Requests</Text>
           {incoming.map((f) => (
             <Card key={f.friendshipId} style={styles.row}>
+              <Avatar name={f.displayName} avatarId={f.avatarId} size={40} />
               <Text style={[styles.rowTitle, styles.flex]}>{f.displayName}</Text>
               <Button label="Accept" onPress={() => accept(f)} style={styles.smallButton} />
               <Button label="Decline" onPress={() => remove(f)} variant="secondary" style={styles.smallButton} />
@@ -150,6 +152,7 @@ export default function FriendsScreen() {
       renderItem={({ item }) => (
         <Pressable onPress={() => confirmRemove(item)}>
           <Card style={styles.row}>
+            <Avatar name={item.displayName} avatarId={item.avatarId} size={40} />
             <View style={styles.flex}>
               <Text style={styles.rowTitle}>{item.displayName}</Text>
               <Text style={styles.rowMeta}>
@@ -195,7 +198,7 @@ const makeStyles = (theme: Theme) =>
       marginTop: 24,
       marginBottom: 8,
     },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, paddingVertical: 14 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8, paddingVertical: 14 },
     rowTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
     rowMeta: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
     smallButton: { paddingVertical: 8, paddingHorizontal: 12 },

@@ -10,7 +10,7 @@ import react from '@vitejs/plugin-react';
 // maplibre-gl. The Go server serves the built app (SUPERATLAS_WEB_DIR), so in
 // production the API is the page's own origin; `npm run web` proxies it to a
 // dev server on :8080.
-const API_PATHS = ['/auth', '/me', '/friends', '/invites', '/locations', '/push', '/notifications', '/i/', '/healthz'];
+const API_PATHS = ['/auth', '/me', '/friends', '/invites', '/locations', '/push', '/notifications', '/avatars', '/i/', '/healthz'];
 
 export default defineConfig(({mode}) => ({
   plugins: [react({include: /\.(jsx|js|tsx|ts)$/})],
@@ -42,5 +42,8 @@ export default defineConfig(({mode}) => ({
     'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
     // React Native's `global`, which react-native-web's Animated still calls.
     global: 'globalThis',
+    // What Metro sets and expo-modules-core (under expo-image-picker) reads.
+    __DEV__: JSON.stringify(mode !== 'production'),
+    'process.env.EXPO_OS': JSON.stringify('web'),
   },
 }));

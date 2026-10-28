@@ -1,9 +1,10 @@
 // The privacy policy (policy.ts) as a screen: in the app from Settings, and
 // on the web as a page of its own at /privacy (index.web.tsx), as in
-// super-chat.
+// super-chat. PolicyPage also renders the account deletion page
+// (deletion.ts, /delete-account on the web).
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Theme, useThemedStyles } from '../theme';
-import { CONTACT, POLICY, UPDATED, type PolicyBlock } from './policy';
+import { CONTACT, POLICY, UPDATED, type PolicyBlock, type PolicySection } from './policy';
 
 type Styles = ReturnType<typeof makeStyles>;
 
@@ -40,14 +41,22 @@ function Block({ b, styles }: { b: PolicyBlock; styles: Styles }) {
   );
 }
 
-export default function PrivacyPolicy() {
+export function PolicyPage({
+  title,
+  updated,
+  sections,
+}: {
+  title: string;
+  updated: string;
+  sections: PolicySection[];
+}) {
   const styles = useThemedStyles(makeStyles);
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      {/* In the app the screen header says "Privacy policy" already. */}
-      {Platform.OS === 'web' && <Text style={styles.title}>Super Atlas Privacy Policy</Text>}
-      <Text style={styles.updated}>Last updated {UPDATED}</Text>
-      {POLICY.map((section) => (
+      {/* In the app the screen header gives the title already. */}
+      {Platform.OS === 'web' && <Text style={styles.title}>{title}</Text>}
+      <Text style={styles.updated}>Last updated {updated}</Text>
+      {sections.map((section) => (
         <View key={section.title} style={styles.section}>
           <Text style={styles.h2} accessibilityRole="header">
             {section.title}
@@ -62,6 +71,10 @@ export default function PrivacyPolicy() {
       </Pressable>
     </ScrollView>
   );
+}
+
+export default function PrivacyPolicy() {
+  return <PolicyPage title="Super Atlas Privacy Policy" updated={UPDATED} sections={POLICY} />;
 }
 
 const makeStyles = (theme: Theme) =>

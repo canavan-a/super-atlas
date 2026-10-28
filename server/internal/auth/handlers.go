@@ -51,10 +51,11 @@ type userResponse struct {
 	ID          string `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"displayName"`
+	AvatarID    string `json:"avatarId,omitempty"`
 }
 
 func toUserResponse(u *User) userResponse {
-	return userResponse{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName}
+	return userResponse{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, AvatarID: u.AvatarID}
 }
 
 const notAllowedMessage = "this email isn't on the Super Atlas guest list yet, ask whoever runs it to add you"

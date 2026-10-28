@@ -13,9 +13,10 @@ type Service struct {
 	store       *Store
 	friendStore *friends.Store
 	hub         *Hub
-	// names caches display names for live pushes. Names can't be changed
-	// after sign-up, so entries never go stale.
-	names sync.Map
+	// profiles caches each user's name and picture id for live pushes.
+	// Names can't be changed after sign-up; a new picture calls
+	// ForgetProfile.
+	profiles sync.Map
 }
 
 func NewService(store *Store, friendStore *friends.Store, hub *Hub) *Service {
@@ -28,6 +29,7 @@ type updatePayload struct {
 	Type        string   `json:"type"`
 	UserID      string   `json:"userId"`
 	DisplayName string   `json:"displayName"`
+	AvatarID    string   `json:"avatarId,omitempty"`
 	Latitude    float64  `json:"latitude"`
 	Longitude   float64  `json:"longitude"`
 	AccuracyM   *float64 `json:"accuracyM,omitempty"`
@@ -39,6 +41,7 @@ func payloadFor(l Location) updatePayload {
 		Type:        "location_update",
 		UserID:      l.UserID,
 		DisplayName: l.DisplayName,
+		AvatarID:    l.AvatarID,
 		Latitude:    l.Latitude,
 		Longitude:   l.Longitude,
 		AccuracyM:   l.AccuracyM,
@@ -64,13 +67,14 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng fl
 		return err
 	}
 
-	name, err := s.displayName(ctx, userID)
+	p, err := s.profile(ctx, userID)
 	if err != nil {
 		return err
 	}
 	payload, err := json.Marshal(payloadFor(Location{
 		UserID:      userID,
-		DisplayName: name,
+		DisplayName: p.name,
+		AvatarID:    p.avatarID,
 		Latitude:    lat,
 		Longitude:   lng,
 		AccuracyM:   accuracy,
@@ -86,16 +90,24 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng fl
 	return nil
 }
 
-func (s *Service) displayName(ctx context.Context, userID string) (string, error) {
-	if v, ok := s.names.Load(userID); ok {
-		return v.(string), nil
+type profile struct{ name, avatarID string }
+
+func (s *Service) profile(ctx context.Context, userID string) (profile, error) {
+	if v, ok := s.profiles.Load(userID); ok {
+		return v.(profile), nil
 	}
-	name, err := s.store.DisplayName(ctx, userID)
+	name, avatarID, err := s.store.Profile(ctx, userID)
 	if err != nil {
-		return "", err
+		return profile{}, err
 	}
-	s.names.Store(userID, name)
-	return name, nil
+	p := profile{name, avatarID}
+	s.profiles.Store(userID, p)
+	return p, nil
+}
+
+// ForgetProfile drops userID's cached profile, after its picture changes.
+func (s *Service) ForgetProfile(userID string) {
+	s.profiles.Delete(userID)
 }
 
 // SnapshotForViewer returns the last-known positions of userID's friends,

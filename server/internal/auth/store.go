@@ -13,7 +13,9 @@ type User struct {
 	ID          string
 	Email       string
 	DisplayName string
-	CreatedAt   time.Time
+	// AvatarID is the profile picture's id (avatar package), "" for none.
+	AvatarID  string
+	CreatedAt time.Time
 }
 
 type LoginCode struct {
@@ -59,20 +61,23 @@ func (s *Store) CreateUser(ctx context.Context, id, email, displayName string) e
 
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, created_at FROM users WHERE email = ?`, email)
+		userSelect+` WHERE u.email = ?`, email)
 	return scanUser(row)
 }
 
 func (s *Store) GetUserByID(ctx context.Context, id string) (*User, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, email, display_name, created_at FROM users WHERE id = ?`, id)
+		userSelect+` WHERE u.id = ?`, id)
 	return scanUser(row)
 }
+
+const userSelect = `SELECT u.id, u.email, u.display_name, COALESCE(a.id, ''), u.created_at
+	FROM users u LEFT JOIN avatars a ON a.user_id = u.id`
 
 func scanUser(row *sql.Row) (*User, error) {
 	var u User
 	var createdAt string
-	if err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &createdAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.DisplayName, &u.AvatarID, &createdAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -172,10 +177,11 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error 
 }
 
 // DeleteUser deletes the account and everything tied to it. Deleting the
-// users row cascades to its sessions, push tokens, friendships, location and
-// settings; its pending sign-in codes, its allowlist entry (so the email is
-// gone entirely, and the admin has to allow it again for a new account) and
-// any dev-mode "larp" fake friends it owns go here too.
+// users row cascades to its sessions, push tokens, friendships, location,
+// settings and profile picture; its pending sign-in codes, its allowlist
+// entry (so the email is gone entirely, and the admin has to allow it again
+// for a new account) and any dev-mode "larp" fake friends it owns go here
+// too.
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

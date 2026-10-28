@@ -6,6 +6,7 @@ export type Friend = {
   friendshipId: string;
   friendId: string;
   displayName: string;
+  avatarId?: string;
   status: 'pending' | 'accepted';
   isIncomingRequest: boolean;
   lastSeenAt?: string;

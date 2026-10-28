@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/canavan-a/super-atlas/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/avatar"
 	"github.com/canavan-a/super-atlas/server/internal/config"
 	"github.com/canavan-a/super-atlas/server/internal/db"
 	"github.com/canavan-a/super-atlas/server/internal/friends"
@@ -82,6 +83,7 @@ func main() {
 		Config:           cfg,
 		AuthService:      authService,
 		AuthHandlers:     auth.NewHandlers(authService, locationService),
+		AvatarHandlers:   avatar.NewHandlers(avatar.NewStore(conn), locationService.ForgetProfile),
 		FriendService:    friendService,
 		FriendHandlers:   friends.NewHandlers(friendService, larpToggler, httpapi.InviteURL(cfg)),
 		LocationHandlers: locationHandlers,

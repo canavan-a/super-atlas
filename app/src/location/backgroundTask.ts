@@ -1,28 +1,16 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { NativeModules } from 'react-native';
-import { apiJson, getToken } from '../api/client';
+import { apiJson } from '../api/client';
+import { requestActivityPermissionOnce, startMotionTracking, stopMotionTracking } from './motion';
 
 export const BACKGROUND_LOCATION_TASK = 'superatlas-background-location';
 
-// Motion-triggered sharing (android/.../MotionTracker.kt): a geofence where
-// you stopped, and a foreground service sending fixes while you're moving
-// once you leave it. Native, because only a native geofence receiver may
-// start a location service with the app closed. The OS-scheduled task below
-// is the fallback: it covers phones without Google Play services, and re-arms
-// the geofence whenever it runs in case Android dropped it.
-interface MotionNative {
-  enable(token: string): Promise<void>;
-  disable(): Promise<void>;
-}
-
-const Motion = NativeModules.Motion as MotionNative | undefined;
-
-async function startMotionTracking() {
-  const token = await getToken();
-  if (token) await Motion?.enable(token);
-}
+// Background sharing is two parts, both on once background location is
+// granted: motion-triggered sharing while you move (motion.ts), and the
+// OS-scheduled task below as the fallback. The task covers phones without
+// Google Play services, and re-arms motion tracking whenever it runs in case
+// Android dropped its geofence.
 
 // Runs on the OS's own schedule (typically every 15-30+ min, batched with
 // other apps' background work for battery efficiency) rather than on a timer
@@ -69,7 +57,7 @@ export async function registerBackgroundLocationTask() {
 }
 
 export async function unregisterBackgroundLocationTask() {
-  await Motion?.disable();
+  await stopMotionTracking();
   const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_LOCATION_TASK);
   if (isRegistered) {
     await BackgroundTask.unregisterTaskAsync(BACKGROUND_LOCATION_TASK);
@@ -77,9 +65,10 @@ export async function unregisterBackgroundLocationTask() {
 }
 
 // Registers the task and turns on motion tracking if background permission
-// is granted. Called on every signed-in launch, since a reinstall, an update
-// or signing in again can leave them off even though the permission is
-// still there.
+// is granted. Called on every signed-in launch (with the app open), since a
+// reinstall, an update or signing in again can leave them off even though
+// the permission is still there. Also asks once for the activity permission
+// people set up before it existed never saw.
 export async function ensureBackgroundLocationTask() {
   const { status } = await Location.getBackgroundPermissionsAsync();
   if (status !== Location.PermissionStatus.GRANTED) return;
@@ -87,4 +76,5 @@ export async function ensureBackgroundLocationTask() {
     await BackgroundTask.registerTaskAsync(BACKGROUND_LOCATION_TASK, { minimumInterval: 15 });
   }
   await startMotionTracking();
+  await requestActivityPermissionOnce();
 }
