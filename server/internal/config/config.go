@@ -34,6 +34,11 @@ type Config struct {
 	// WebDir holds the built web client (app/dist), served at /. Empty: no
 	// web client.
 	WebDir string
+	// ReviewEmail and ReviewCode are the app store review account: that
+	// email signs in with that fixed code and is never emailed. Either
+	// empty: no such account.
+	ReviewEmail string
+	ReviewCode  string
 	// Dev enables debug-only behavior: the "larp" fake-friends trigger, and
 	// logging login codes when SMTP isn't configured.
 	Dev bool
@@ -56,6 +61,8 @@ func Load() *Config {
 		TrustProxy:         os.Getenv("SUPERATLAS_TRUST_PROXY") == "1",
 		FCMCredentialsFile: os.Getenv("SUPERATLAS_FCM_CREDENTIALS_FILE"),
 		WebDir:             os.Getenv("SUPERATLAS_WEB_DIR"),
+		ReviewEmail:        os.Getenv("SUPERATLAS_REVIEW_EMAIL"),
+		ReviewCode:         os.Getenv("SUPERATLAS_REVIEW_CODE"),
 		Dev:                os.Getenv("SUPERATLAS_DEV") == "1",
 	}
 }

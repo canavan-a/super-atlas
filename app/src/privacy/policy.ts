@@ -33,7 +33,7 @@ export const POLICY: PolicySection[] = [
         list: [
           '**Email address.** Used to sign you in with a one-time code and for friends to find you. We never send you anything else.',
           '**Display name.** The name you choose when you sign up, shown to your friends and to anyone you send a friend request or invite link.',
-          '**Location.** Your device sends its position while the app is open, and every 15 minutes or so in the background if you allow "Allow all the time". The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
+          '**Location.** Your device sends its position while the app is open. If you allow "Allow all the time", it also sends it every 15 seconds or so while you\'re moving (Android shows a notification while it does) and every 15 minutes or so otherwise. The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
           "**Friends.** Who you're friends with and any pending friend requests, plus your personal invite link, which you can reset at any time.",
           '**Sign-in sessions.** One per signed-in device, stored only as a scrambled (hashed) token.',
           '**Notification token (Google Play version only).** A device token from Google, so we can tell you about friend requests while the app is closed.',

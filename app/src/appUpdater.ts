@@ -104,13 +104,28 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-// Permission gate, download, then hand off to the installer.
+// Whether Android lets this app install APKs ("Install unknown apps"), and
+// the settings page that allows it.
+export const canInstallUpdates = (): Promise<boolean> => native().canInstallPackages();
+export const openInstallSettings = (): Promise<void> => native().openInstallPermissionSettings();
+
+// Each version's downloaded APK, so backing out of the installer and tapping
+// Install again opens it straight away instead of downloading it again.
+const downloaded = new Map<string, string>();
+
+// Download (once per version), then hand off to the installer. Callers check
+// canInstallUpdates first.
 export async function installRelease(release: Release): Promise<void> {
   const n = native();
-  if (!(await n.canInstallPackages())) {
-    await n.openInstallPermissionSettings();
-    throw new Error('Allow Super Atlas to install apps, then try again.');
+  let path = downloaded.get(release.version);
+  if (!path) {
+    path = await n.downloadApk(release.apkUrl, release.version);
+    downloaded.set(release.version, path);
   }
-  const path = await n.downloadApk(release.apkUrl, release.version);
-  await n.installApk(path);
+  try {
+    await n.installApk(path);
+  } catch (e) {
+    downloaded.delete(release.version); // e.g. the file was cleared: download it again next time
+    throw e;
+  }
 }

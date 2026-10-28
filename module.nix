@@ -103,6 +103,29 @@ in
       '';
     };
 
+    reviewAccount = {
+      email = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "tester@example.com";
+        description = ''
+          An account for app store reviewers: this email signs in with
+          reviewAccount.code, needs no allowlist entry, and is never sent an
+          email. Otherwise it's an ordinary account friends can add. Empty
+          (or no code): off.
+        '';
+      };
+      code = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "222222";
+        description = ''
+          The review account's fixed sign-in code. It ends up in the Nix
+          store, so use it for this throwaway account only.
+        '';
+      };
+    };
+
     web.enable = lib.mkEnableOption ''
       building the app's web client (view only: it shows friends but never
       shares a location) and serving it at / next to the API
@@ -176,6 +199,9 @@ in
         SUPERATLAS_PUBLIC_ORIGIN = cfg.publicOrigin;
         SUPERATLAS_ANDROID_CERT_SHA256 = lib.concatStringsSep "," cfg.androidCertSha256;
         SUPERATLAS_TRUST_PROXY = if cfg.trustProxy then "1" else "0";
+      } // lib.optionalAttrs (cfg.reviewAccount.email != "" && cfg.reviewAccount.code != "") {
+        SUPERATLAS_REVIEW_EMAIL = cfg.reviewAccount.email;
+        SUPERATLAS_REVIEW_CODE = cfg.reviewAccount.code;
       } // lib.optionalAttrs (cfg.fcmCredentialsFile != null) {
         SUPERATLAS_FCM_CREDENTIALS_FILE = "%d/fcm.json";
       } // lib.optionalAttrs cfg.web.enable {

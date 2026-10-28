@@ -206,6 +206,44 @@ func TestOnlyAllowedEmailsSignIn(t *testing.T) {
 	}
 }
 
+func TestReviewAccountSignsInWithFixedCode(t *testing.T) {
+	ctx := context.Background()
+	svc, mailer, _ := newTestService(t)
+	svc.SetReviewAccount("Tester@Example.com", "222222")
+
+	// Not on the allowlist, and nothing is emailed.
+	if err := svc.RequestCode(ctx, "tester@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, sent := mailer.codes["tester@example.com"]; sent {
+		t.Fatal("a code was emailed to the review account")
+	}
+
+	if _, _, err := svc.Verify(ctx, "tester@example.com", "123456", "Tester"); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("wrong code: want ErrInvalidCode, got %v", err)
+	}
+	if _, _, err := svc.Verify(ctx, "tester@example.com", "222222", ""); !errors.Is(err, ErrNeedsName) {
+		t.Fatalf("new account: want ErrNeedsName, got %v", err)
+	}
+	first, _, err := svc.Verify(ctx, "tester@example.com", "222222", "Tester")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The code keeps working, on the same account, without asking again.
+	again, token, err := svc.Verify(ctx, "tester@example.com", "222222", "")
+	if err != nil || again.ID != first.ID {
+		t.Fatalf("second sign-in: %+v %v", again, err)
+	}
+	if id, err := svc.Authenticate(ctx, token); err != nil || id != first.ID {
+		t.Fatalf("authenticate: %v %q", err, id)
+	}
+
+	// Everyone else still needs a real code.
+	if _, _, err := svc.Verify(ctx, "ada@example.com", "222222", "Ada"); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("other email with the review code: want ErrInvalidCode, got %v", err)
+	}
+}
+
 func TestMigrationAllowsExistingAccounts(t *testing.T) {
 	// Roll the database back to before the allowlist, make an account, and
 	// run the migration again: that account must still be able to sign in.

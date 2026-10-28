@@ -6,6 +6,7 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <queries>
     <intent>
@@ -67,5 +68,15 @@
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
     </activity-alias>
+    <!-- Motion-triggered location sharing (MotionTracker.kt): the service
+         that runs while you're moving, and the receiver that starts it on a
+         geofence exit and re-arms the geofence after a reboot or update. -->
+    <service android:name=".MotionService" android:foregroundServiceType="location" android:exported="false"/>
+    <receiver android:name=".MotionReceiver" android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+      </intent-filter>
+    </receiver>
   </application>
 </manifest>

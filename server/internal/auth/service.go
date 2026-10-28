@@ -45,10 +45,28 @@ type Service struct {
 	mailer Mailer
 	now    func() time.Time
 	sends  *ratelimit.Limiter
+	// The app store review account (SetReviewAccount): empty when off.
+	reviewEmail string
+	reviewCode  string
 }
 
 func NewService(store *Store, mailer Mailer) *Service {
 	return &Service{store: store, mailer: mailer, now: time.Now, sends: ratelimit.New(codesPerHour, time.Hour)}
+}
+
+// SetReviewAccount turns on a sign-in for app store reviewers: email always
+// signs in with the fixed code, nothing is emailed, and it's allowed without
+// being on the allowlist. Otherwise it's an ordinary account (friends can add
+// it). Empty email or code leaves it off.
+func (s *Service) SetReviewAccount(email, code string) {
+	if email = NormalizeEmail(email); email == "" || code == "" {
+		return
+	}
+	s.reviewEmail, s.reviewCode = email, code
+}
+
+func (s *Service) isReviewAccount(email string) bool {
+	return s.reviewEmail != "" && email == s.reviewEmail
 }
 
 func NormalizeEmail(email string) string {
@@ -65,6 +83,9 @@ func (s *Service) RequestCode(ctx context.Context, email string) error {
 	}
 	if err := s.checkAllowed(ctx, email); err != nil {
 		return err
+	}
+	if s.isReviewAccount(email) {
+		return nil // its code is fixed, so there's nothing to send
 	}
 	if !s.sends.Allow("all") {
 		return ErrTooManyCodes
@@ -92,21 +113,30 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 		return nil, "", err
 	}
 
-	lc, err := s.store.LatestLoginCode(ctx, email)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+	// The review account has no stored code to check or use up.
+	var lc *LoginCode
+	if s.isReviewAccount(email) {
+		if subtle.ConstantTimeCompare([]byte(s.reviewCode), []byte(strings.TrimSpace(code))) != 1 {
 			return nil, "", ErrInvalidCode
 		}
-		return nil, "", err
-	}
-	if lc.UsedAt != nil || s.now().After(lc.ExpiresAt) || lc.Attempts >= maxCodeAttempts {
-		return nil, "", ErrInvalidCode
-	}
-	if subtle.ConstantTimeCompare([]byte(lc.CodeHash), []byte(HashToken(strings.TrimSpace(code)))) != 1 {
-		if err := s.store.IncrementLoginCodeAttempts(ctx, lc.ID); err != nil {
+	} else {
+		var err error
+		lc, err = s.store.LatestLoginCode(ctx, email)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, "", ErrInvalidCode
+			}
 			return nil, "", err
 		}
-		return nil, "", ErrInvalidCode
+		if lc.UsedAt != nil || s.now().After(lc.ExpiresAt) || lc.Attempts >= maxCodeAttempts {
+			return nil, "", ErrInvalidCode
+		}
+		if subtle.ConstantTimeCompare([]byte(lc.CodeHash), []byte(HashToken(strings.TrimSpace(code)))) != 1 {
+			if err := s.store.IncrementLoginCodeAttempts(ctx, lc.ID); err != nil {
+				return nil, "", err
+			}
+			return nil, "", ErrInvalidCode
+		}
 	}
 
 	user, err := s.store.GetUserByEmail(ctx, email)
@@ -120,8 +150,10 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 		return nil, "", err
 	}
 
-	if err := s.store.MarkLoginCodeUsed(ctx, lc.ID); err != nil {
-		return nil, "", err
+	if lc != nil {
+		if err := s.store.MarkLoginCodeUsed(ctx, lc.ID); err != nil {
+			return nil, "", err
+		}
 	}
 	token, err := s.createSession(ctx, user.ID)
 	if err != nil {
@@ -131,6 +163,9 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 }
 
 func (s *Service) checkAllowed(ctx context.Context, email string) error {
+	if s.isReviewAccount(email) {
+		return nil
+	}
 	ok, err := s.store.IsAllowed(ctx, email)
 	if err != nil {
 		return err

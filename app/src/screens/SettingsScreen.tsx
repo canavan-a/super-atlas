@@ -1,13 +1,15 @@
 import { useNavigation } from '@react-navigation/native';
 import { useEffect, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import {
   Release,
+  canInstallUpdates,
   compareVersions,
   fetchLatestRelease,
   getVersionInfo,
   installRelease,
   onDownloadProgress,
+  openInstallSettings,
   updatesSupported,
 } from '../appUpdater';
 import { useAuth } from '../auth/AuthContext';
@@ -38,6 +40,9 @@ type UpdateState =
   | { kind: 'checking' }
   | { kind: 'upToDate' }
   | { kind: 'available'; release: Release }
+  // Sent to Android's "Install unknown apps" page; carries on by itself once
+  // it's allowed and the app is back in front.
+  | { kind: 'needsPermission'; release: Release }
   | { kind: 'downloading'; release: Release; percent: number | null }
   | { kind: 'error'; message: string };
 
@@ -80,8 +85,10 @@ export default function SettingsScreen() {
   const checkForUpdates = async () => {
     setUpdate({ kind: 'checking' });
     try {
+      // The version may not have loaded yet if this is tapped right away.
+      const current = version ?? (await getVersionInfo()).versionName;
       const latest = await fetchLatestRelease();
-      if (latest && version && compareVersions(latest.version, version) > 0) {
+      if (latest && compareVersions(latest.version, current) > 0) {
         setUpdate({ kind: 'available', release: latest });
       } else {
         setUpdate({ kind: 'upToDate' });
@@ -92,6 +99,11 @@ export default function SettingsScreen() {
   };
 
   const installUpdate = async (release: Release) => {
+    if (!(await canInstallUpdates().catch(() => false))) {
+      setUpdate({ kind: 'needsPermission', release });
+      await openInstallSettings().catch(() => {});
+      return;
+    }
     setUpdate({ kind: 'downloading', release, percent: null });
     const stop = onDownloadProgress((p) => {
       if (p.bytesTotal > 0) {
@@ -107,6 +119,16 @@ export default function SettingsScreen() {
       stop();
     }
   };
+
+  // Back from "Install unknown apps" with it allowed: carry on installing.
+  useEffect(() => {
+    if (update.kind !== 'needsPermission') return;
+    const { release } = update;
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state === 'active' && (await canInstallUpdates().catch(() => false))) installUpdate(release);
+    });
+    return () => sub.remove();
+  }, [update]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const confirmSignOut = () =>
     confirmThen('Sign out?', 'Your friends will stop seeing you until you sign back in.', 'Sign out', () => logout());
@@ -178,7 +200,7 @@ export default function SettingsScreen() {
             Version {version ?? '…'}
             {update.kind === 'upToDate' && ' · up to date'}
           </Text>
-          {update.kind === 'available' ? (
+          {update.kind === 'available' || update.kind === 'needsPermission' ? (
             <Button
               label={`Install ${update.release.version}`}
               onPress={() => installUpdate(update.release)}
@@ -199,6 +221,11 @@ export default function SettingsScreen() {
               variant="secondary"
               style={styles.buttonGap}
             />
+          )}
+          {update.kind === 'needsPermission' && (
+            <Text style={[styles.hint, styles.updateHint]}>
+              Allow "Install unknown apps" for Super Atlas, then come back. The update carries on by itself.
+            </Text>
           )}
           {update.kind === 'error' && <Text style={styles.error}>{update.message}</Text>}
         </>
@@ -262,6 +289,7 @@ const makeStyles = (theme: Theme) =>
     account: { color: theme.text, fontSize: 15 },
     buttonGap: { marginTop: 16 },
     error: { color: theme.danger, marginTop: 10 },
+    updateHint: { marginTop: 10 },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     rowText: { flex: 1 },
     hint: { color: theme.textMuted, fontSize: 13, marginTop: 2, lineHeight: 18 },

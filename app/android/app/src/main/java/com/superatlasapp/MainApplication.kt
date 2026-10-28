@@ -21,11 +21,13 @@ class MainApplication : Application(), ReactApplication {
       context = applicationContext,
       packageList =
         PackageList(this).packages.apply {
-          // The app's own native modules (see src/distribution.ts and
-          // src/appIcon.ts), plus whatever the build flavor adds.
+          // The app's own native modules (see src/distribution.ts,
+          // src/appIcon.ts and src/location/backgroundTask.ts), plus
+          // whatever the build flavor adds.
           addAll(Flavor.packages())
           add(DistributionPackage())
           add(AppIconPackage())
+          add(MotionPackage())
         }
     )
   }

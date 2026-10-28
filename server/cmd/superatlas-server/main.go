@@ -43,6 +43,10 @@ func main() {
 
 	authStore := auth.NewStore(conn)
 	authService := auth.NewService(authStore, mailer)
+	if cfg.ReviewEmail != "" && cfg.ReviewCode != "" {
+		authService.SetReviewAccount(cfg.ReviewEmail, cfg.ReviewCode)
+		log.Printf("review account on: %s signs in with its fixed code", cfg.ReviewEmail)
+	}
 	go authService.RunJanitor(ctx)
 
 	// Friend notifications: the sideload app's background connection, plus
