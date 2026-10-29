@@ -31,6 +31,21 @@ const USER_CACHE_KEY = 'superatlas.user.v1';
 
 type MeResponse = { user: User; ghostMode: boolean };
 
+// A picked photo's file as a Blob. Not fetch(uri).blob(): React Native's
+// fetch reads it through an ArrayBuffer, which its Blob can't be made from
+// ("Creating blobs from 'ArrayBuffer' ... are not supported"), while
+// XMLHttpRequest hands back a native Blob. Works the same in the browser.
+function readFileBlob(uri: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.onload = () => resolve(xhr.response);
+    xhr.onerror = () => reject(new Error('Could not read that photo'));
+    xhr.responseType = 'blob';
+    xhr.open('GET', uri);
+    xhr.send();
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthState['status']>('loading');
   const [user, setUser] = useState<User | null>(null);
@@ -118,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (uri) {
       // The server crops, shrinks and re-encodes it, so the original goes
       // up as it is.
-      const photo = await (await fetch(uri)).blob();
+      const photo = await readFileBlob(uri);
       ({ avatarId } = await apiJson<{ avatarId: string }>('/me/avatar', {
         method: 'PUT',
         body: photo,
