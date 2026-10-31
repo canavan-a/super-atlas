@@ -15,7 +15,7 @@ type Service struct {
 	hub         *Hub
 	// profiles caches each user's name and picture id for live pushes.
 	// Names can't be changed after sign-up; a new picture calls
-	// ForgetProfile.
+	// ProfileChanged.
 	profiles sync.Map
 }
 
@@ -105,9 +105,27 @@ func (s *Service) profile(ctx context.Context, userID string) (profile, error) {
 	return p, nil
 }
 
-// ForgetProfile drops userID's cached profile, after its picture changes.
-func (s *Service) ForgetProfile(userID string) {
+// ProfileChanged drops userID's cached profile after its picture changes,
+// and re-sends its last position to friends with the map open so they see
+// the new picture without waiting for userID to move. Nothing is sent for
+// someone in ghost mode or who has never shared a position.
+func (s *Service) ProfileChanged(ctx context.Context, userID string) {
 	s.profiles.Delete(userID)
+	locs, err := s.store.GetForUsers(ctx, []string{userID})
+	if err != nil || len(locs) == 0 {
+		return
+	}
+	viewers, err := s.friendStore.AcceptedFriendIDs(ctx, userID)
+	if err != nil {
+		return
+	}
+	payload, err := json.Marshal(payloadFor(locs[0]))
+	if err != nil {
+		return
+	}
+	for _, viewerID := range viewers {
+		s.hub.PushTo(viewerID, payload)
+	}
 }
 
 // SnapshotForViewer returns the last-known positions of userID's friends,

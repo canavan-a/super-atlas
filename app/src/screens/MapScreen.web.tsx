@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { avatarUrl, initialsFor } from '../components/Avatar';
 import { MapChrome } from '../components/MapChrome';
 import type { FriendLocation } from '../location/friendStream';
+import { GLIDE_MS, glide, shouldGlide, type LngLat } from '../map/glide';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
 import { useMapData } from './useMapData';
@@ -25,8 +26,15 @@ export default function MapScreen() {
   const fittedOnce = useRef(false);
   const latest = useRef<FriendLocation[]>(locations);
   latest.current = locations;
+  // Each marker's slide in progress (glide.ts), stopped before the next.
+  const glides = useRef(new Map<string, () => void>());
+  // Each marker's latest position from the stream (where its slide ends).
+  const targets = useRef(new Map<string, LngLat>());
+  // The friend the camera follows (see MapScreen.tsx), or null.
+  const following = useRef<string | null>(null);
 
   const fitEveryone = (animate = true) => {
+    following.current = null;
     const m = map.current;
     const points = latest.current;
     if (!m || points.length === 0) return;
@@ -39,7 +47,8 @@ export default function MapScreen() {
     m.fitBounds(bounds, { padding: FIT_PADDING, ...NEUTRAL, animate });
   };
 
-  // Create the map once; tapping empty map closes the friend card.
+  // Create the map once; tapping empty map closes the friend card, and it or
+  // moving the map yourself stops following.
   useEffect(() => {
     const el = container.current as unknown as HTMLElement | null;
     if (!el) return;
@@ -50,10 +59,19 @@ export default function MapScreen() {
       zoom: 1.5,
       attributionControl: { compact: true },
     });
-    m.on('click', () => setSelectedId(null));
+    m.on('click', () => {
+      setSelectedId(null);
+      following.current = null;
+    });
+    m.on('movestart', (e) => {
+      if (e.originalEvent) following.current = null;
+    });
     map.current = m;
     const owned = markers.current;
+    const sliding = glides.current;
     return () => {
+      sliding.forEach((stop) => stop());
+      sliding.clear();
       owned.forEach((marker) => marker.remove());
       owned.clear();
       m.remove();
@@ -65,7 +83,8 @@ export default function MapScreen() {
     map.current?.setStyle(theme.mapStyle);
   }, [theme.mapStyle]);
 
-  // Keep one marker per friend, in step with their positions.
+  // Keep one marker per friend, sliding to each new position, with the
+  // camera sliding along on whoever is followed.
   useEffect(() => {
     const m = map.current;
     if (!m) return;
@@ -81,16 +100,39 @@ export default function MapScreen() {
           const friend = latest.current.find((f) => f.userId === l.userId);
           if (!friend) return;
           setSelectedId(friend.userId);
-          m.flyTo({ center: [friend.longitude, friend.latitude], zoom: 16 });
+          following.current = friend.userId;
+          m.easeTo({ center: [friend.longitude, friend.latitude], duration: 600 });
         });
         marker = new maplibregl.Marker({ element: el }).setLngLat([l.longitude, l.latitude]).addTo(m);
         markers.current.set(l.userId, marker);
       }
-      marker.setLngLat([l.longitude, l.latitude]);
+      // Only a new position moves it: this also runs on unrelated re-renders,
+      // which mustn't restart a slide in progress.
+      const from = marker.getLngLat().toArray() as LngLat;
+      const to: LngLat = [l.longitude, l.latitude];
+      const prev = targets.current.get(l.userId);
+      targets.current.set(l.userId, to);
+      if (prev && (prev[0] !== to[0] || prev[1] !== to[1])) {
+        glides.current.get(l.userId)?.();
+        const slide = shouldGlide(from, to);
+        if (slide) {
+          const target = marker;
+          glides.current.set(l.userId, glide(from, to, (p) => target.setLngLat(p)));
+        } else {
+          marker.setLngLat(to);
+        }
+        if (following.current === l.userId) {
+          if (slide) m.easeTo({ center: to, duration: GLIDE_MS, easing: (t) => t });
+          else m.jumpTo({ center: to });
+        }
+      }
       styleMarker(marker.getElement(), l, theme, isStale(l.recordedAt, now));
     }
     for (const [id, marker] of markers.current) {
       if (!seen.has(id)) {
+        glides.current.get(id)?.();
+        glides.current.delete(id);
+        targets.current.delete(id);
         marker.remove();
         markers.current.delete(id);
       }

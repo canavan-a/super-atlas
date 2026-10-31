@@ -31,10 +31,19 @@ type Service struct {
 	authStore *auth.Store
 	// notifier is nil when nothing should be told (tests, larp).
 	notifier Notifier
+	// autoAccept, when set, picks out users who accept every request at
+	// once (the npc package's simulated friends).
+	autoAccept func(userID string) bool
 }
 
 func NewService(store *Store, authStore *auth.Store, notifier Notifier) *Service {
 	return &Service{store: store, authStore: authStore, notifier: notifier}
+}
+
+// SetAutoAccept makes requests to users isAuto picks out accepted as soon as
+// they're sent. Call it before serving requests.
+func (s *Service) SetAutoAccept(isAuto func(userID string) bool) {
+	s.autoAccept = isAuto
 }
 
 // notify sends to toID about fromID; failures to look up the name are
@@ -87,6 +96,12 @@ func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeEmail s
 	id := uuid.NewString()
 	if err := s.store.Create(ctx, id, requesterID, addressee.ID); err != nil {
 		return nil, err
+	}
+	if s.autoAccept != nil && s.autoAccept(addressee.ID) {
+		if err := s.store.Accept(ctx, id); err != nil {
+			return nil, err
+		}
+		return s.store.GetByID(ctx, id)
 	}
 	s.notify(addressee.ID, requesterID, true)
 	return s.store.GetByID(ctx, id)

@@ -17,6 +17,7 @@ import (
 	"github.com/canavan-a/super-atlas/server/internal/location"
 	"github.com/canavan-a/super-atlas/server/internal/mail"
 	"github.com/canavan-a/super-atlas/server/internal/notify"
+	"github.com/canavan-a/super-atlas/server/internal/npc"
 	"github.com/canavan-a/super-atlas/server/internal/push"
 )
 
@@ -73,6 +74,16 @@ func main() {
 	locationService := location.NewService(locationStore, friendStore, hub)
 	locationHandlers := location.NewHandlers(locationService, hub)
 
+	// Simulated friends around Albany for testing: a friend request to one
+	// of their @lunargen.com emails is accepted at once and they start
+	// driving on your map.
+	npcs := npc.NewService(authStore, friendStore, locationService)
+	if err := npcs.Setup(ctx); err != nil {
+		log.Fatalf("npc: %v", err)
+	}
+	friendService.SetAutoAccept(npcs.IsNPC)
+	go npcs.Run(ctx)
+
 	// The "larp" fake-friends trigger only exists in dev mode.
 	var larpToggler friends.LarpToggler
 	if cfg.Dev {
@@ -83,7 +94,7 @@ func main() {
 		Config:           cfg,
 		AuthService:      authService,
 		AuthHandlers:     auth.NewHandlers(authService, locationService),
-		AvatarHandlers:   avatar.NewHandlers(avatar.NewStore(conn), locationService.ForgetProfile),
+		AvatarHandlers:   avatar.NewHandlers(avatar.NewStore(conn), locationService.ProfileChanged),
 		FriendService:    friendService,
 		FriendHandlers:   friends.NewHandlers(friendService, larpToggler, httpapi.InviteURL(cfg)),
 		LocationHandlers: locationHandlers,

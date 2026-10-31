@@ -121,11 +121,11 @@ func Process(data []byte) ([]byte, error) {
 type Handlers struct {
 	store *Store
 	// changed is told whose picture changed, so caches of it (the location
-	// service's, for live pushes) can drop it.
-	changed func(userID string)
+	// service's, for live pushes) can drop it and friends' maps update.
+	changed func(ctx context.Context, userID string)
 }
 
-func NewHandlers(store *Store, changed func(userID string)) *Handlers {
+func NewHandlers(store *Store, changed func(ctx context.Context, userID string)) *Handlers {
 	return &Handlers{store: store, changed: changed}
 }
 
@@ -147,7 +147,7 @@ func (h *Handlers) Put(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not save photo")
 		return
 	}
-	h.changed(userID)
+	h.changed(r.Context(), userID)
 	writeJSON(w, http.StatusOK, map[string]string{"avatarId": id})
 }
 
@@ -158,7 +158,7 @@ func (h *Handlers) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not remove photo")
 		return
 	}
-	h.changed(userID)
+	h.changed(r.Context(), userID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
