@@ -37,6 +37,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async () => {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracyM: position.coords.accuracy ?? undefined,
+            speedMps: position.coords.speed ?? undefined,
             recordedAt: new Date(position.timestamp).toISOString(),
           },
         ],

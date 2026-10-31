@@ -73,11 +73,12 @@ func main() {
 	locationStore := location.NewStore(conn)
 	locationService := location.NewService(locationStore, friendStore, hub)
 	locationHandlers := location.NewHandlers(locationService, hub)
+	avatarStore := avatar.NewStore(conn)
 
 	// Simulated friends around Albany for testing: a friend request to one
 	// of their @lunargen.com emails is accepted at once and they start
 	// driving on your map.
-	npcs := npc.NewService(authStore, friendStore, locationService)
+	npcs := npc.NewService(authStore, friendStore, locationService, avatarStore)
 	if err := npcs.Setup(ctx); err != nil {
 		log.Fatalf("npc: %v", err)
 	}
@@ -94,7 +95,7 @@ func main() {
 		Config:           cfg,
 		AuthService:      authService,
 		AuthHandlers:     auth.NewHandlers(authService, locationService),
-		AvatarHandlers:   avatar.NewHandlers(avatar.NewStore(conn), locationService.ProfileChanged),
+		AvatarHandlers:   avatar.NewHandlers(avatarStore, locationService.ProfileChanged),
 		FriendService:    friendService,
 		FriendHandlers:   friends.NewHandlers(friendService, larpToggler, httpapi.InviteURL(cfg)),
 		LocationHandlers: locationHandlers,

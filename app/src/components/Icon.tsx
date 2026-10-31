@@ -1,10 +1,12 @@
 import {
   Check,
   ChevronLeft,
+  ChevronRight,
   Focus,
   Ghost,
   LucideIcon,
   Mail,
+  MapPin,
   RefreshCw,
   Settings,
   Share2,
@@ -19,11 +21,13 @@ export type IconName =
   | 'gear'
   | 'fit'
   | 'back'
+  | 'chevron'
   | 'close'
   | 'share'
   | 'check'
   | 'ghost'
   | 'mail'
+  | 'pin'
   | 'refresh';
 
 const ICONS: Record<IconName, LucideIcon> = {
@@ -31,11 +35,13 @@ const ICONS: Record<IconName, LucideIcon> = {
   gear: Settings,
   fit: Focus,
   back: ChevronLeft,
+  chevron: ChevronRight,
   close: X,
   share: Share2,
   check: Check,
   ghost: Ghost,
   mail: Mail,
+  pin: MapPin,
   refresh: RefreshCw,
 };
 

@@ -1,16 +1,17 @@
 import { useNavigation } from '@react-navigation/native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { whereabouts } from '../friends/status';
 import type { FriendLocation } from '../location/friendStream';
 import { Theme, useTheme, useThemedStyles } from '../theme';
-import { timeAgo } from '../time';
 import { BackgroundLocationBanner } from './BackgroundLocationBanner';
 import { Icon } from './Icon';
 
 // Everything drawn over the map, shared by the Android map (MapScreen.tsx)
 // and the web one (MapScreen.web.tsx): the Friends button with its badge for
 // requests waiting on you, the "fit everyone" button, the card for a tapped
-// friend, and the empty-state nudge. `notice` is a fixed line at the top
+// friend (where they're at; tap it for their own screen), and the
+// empty-state nudge. `notice` is a fixed line at the top
 // (the web build's "view only"); without one, the top holds
 // BackgroundLocationBanner when it applies.
 export function MapChrome({
@@ -62,10 +63,16 @@ export function MapChrome({
       </View>
 
       {selected && (
-        <View style={[styles.card, { bottom: insets.bottom + 24 }]}>
-          <Text style={styles.cardName}>{selected.displayName || 'Friend'}</Text>
-          <Text style={styles.cardMeta}>Seen {timeAgo(selected.recordedAt, now)}</Text>
-        </View>
+        <Pressable
+          style={[styles.card, styles.cardRow, { bottom: insets.bottom + 24 }]}
+          onPress={() => navigation.navigate('Friend', { friendId: selected.userId })}
+        >
+          <View style={styles.flex}>
+            <Text style={styles.cardName}>{selected.displayName || 'Friend'}</Text>
+            <Text style={styles.cardMeta}>{whereabouts(selected, now)}</Text>
+          </View>
+          <Icon name="chevron" color={theme.textMuted} size={18} />
+        </Pressable>
       )}
 
       {noFriends && !selected && (
@@ -133,6 +140,8 @@ const makeStyles = (theme: Theme) =>
       borderRadius: 16,
       padding: 16,
     },
+    cardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    flex: { flex: 1 },
     cardName: { color: theme.text, fontSize: 17, fontWeight: '600' },
     cardMeta: { color: theme.textMuted, marginTop: 4 },
   });

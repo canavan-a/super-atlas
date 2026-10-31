@@ -9,7 +9,11 @@ export type FriendLocation = {
   latitude: number;
   longitude: number;
   accuracyM?: number;
+  // How fast they were going (when their phone says), and since when
+  // they've been near this spot.
+  speedMps?: number;
   recordedAt: string;
+  hereSince?: string;
 };
 
 const MIN_RETRY_MS = 1000;
@@ -23,15 +27,18 @@ function toFriendLocation(data: any): FriendLocation {
     latitude: data.latitude,
     longitude: data.longitude,
     accuracyM: data.accuracyM,
+    speedMps: data.speedMps,
     recordedAt: data.recordedAt,
+    hereSince: data.hereSince,
   };
 }
 
 // Keeps the location WebSocket open while the app is in the foreground and
 // merges friends' positions in. It reconnects on its own (with backoff) after
-// a drop, and right away when the app comes back to the foreground; each
-// connect starts with a fresh snapshot, so anyone who went into ghost mode
-// meanwhile disappears. Receiving only: useLocationStream adds sending this
+// a drop, and right away when the app comes back to the foreground. Anyone
+// who goes into ghost mode drops off as they do, and each
+// connect starts with a fresh snapshot that leaves out anyone who did so
+// meanwhile. Receiving only: useLocationStream adds sending this
 // device's position on Android (the web build never sends one).
 export function useFriendStream() {
   const [friendLocations, setFriendLocations] = useState<Record<string, FriendLocation>>({});
@@ -75,6 +82,12 @@ export function useFriendStream() {
             setFriendLocations(next);
           } else if (data.type === 'location_update') {
             setFriendLocations((prev) => ({ ...prev, [data.userId]: toFriendLocation(data) }));
+          } else if (data.type === 'location_removed') {
+            // They went into ghost mode.
+            setFriendLocations((prev) => {
+              const { [data.userId]: _gone, ...rest } = prev;
+              return rest;
+            });
           }
         } catch {
           // ignore malformed frames

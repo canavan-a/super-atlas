@@ -221,6 +221,7 @@ object MotionTracker {
             .put("longitude", fix.longitude)
             .put("recordedAt", iso.format(fix.time))
     if (fix.hasAccuracy()) point.put("accuracyM", fix.accuracy.toDouble())
+    if (fix.hasSpeed()) point.put("speedMps", fix.speed.toDouble())
     val body = JSONObject().put("points", JSONArray().put(point)).toString().toByteArray()
     return try {
       val conn = URL(BuildConfig.API_URL + "/locations/batch").openConnection() as HttpURLConnection

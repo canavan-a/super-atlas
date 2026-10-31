@@ -60,18 +60,20 @@ func main() {
 		// so the parked position and the route meet.
 		coords = append(append([][2]float64{{from.Lng, from.Lat}}, coords...), [2]float64{to.Lng, to.Lat})
 		durations = append(append([]float64{parkSecs}, durations...), parkSecs)
-		r := npc.Route{Points: make([][2]float64, len(coords)), Secs: make([]float64, len(coords))}
-		for j, c := range coords {
-			r.Points[j] = [2]float64{round(c[0], 5), round(c[1], 5)}
-			if j > 0 {
-				r.Secs[j] = r.Secs[j-1] + durations[j-1]
-			}
+		secs := make([]float64, len(coords))
+		for j := 1; j < len(coords); j++ {
+			secs[j] = secs[j-1] + durations[j-1]
 		}
-		for j := range r.Secs {
-			r.Secs[j] = round(r.Secs[j], 1)
+		// Keeping only the points that shape the road keeps routes.json
+		// small (road trips run to thousands of points); the car still
+		// passes each kept point at its own time.
+		var r npc.Route
+		for _, j := range simplify(coords, 0, len(coords)-1, []int{0}) {
+			r.Points = append(r.Points, [2]float64{round(coords[j][0], 5), round(coords[j][1], 5)})
+			r.Secs = append(r.Secs, round(secs[j], 1))
 		}
 		routes[npc.TripKey(trip[0], trip[1])] = r
-		log.Printf("%d %s: %d points, %.0f min", i+1, npc.TripKey(trip[0], trip[1]), len(coords), r.Secs[len(r.Secs)-1]/60)
+		log.Printf("%d %s: %d of %d points, %.0f min", i+1, npc.TripKey(trip[0], trip[1]), len(r.Points), len(coords), r.Secs[len(r.Secs)-1]/60)
 		time.Sleep(time.Second) // the demo server allows about one request a second
 	}
 	out, err := json.Marshal(routes)
@@ -86,4 +88,38 @@ func main() {
 func round(v float64, places int) float64 {
 	p := math.Pow(10, float64(places))
 	return math.Round(v*p) / p
+}
+
+// tolerance is how far (in meters) a dropped point may be from the line
+// between the points kept either side of it.
+const tolerance = 4
+
+// simplify appends to kept the indexes of the points between first
+// (already kept) and last that a car can't skip without leaving the road by
+// more than tolerance, then last (Douglas–Peucker).
+func simplify(coords [][2]float64, first, last int, kept []int) []int {
+	far, farthest := 0.0, -1
+	for j := first + 1; j < last; j++ {
+		if d := offLine(coords[j], coords[first], coords[last]); d > far {
+			far, farthest = d, j
+		}
+	}
+	if far > tolerance {
+		kept = simplify(coords, first, farthest, kept)
+		return simplify(coords, farthest, last, kept)
+	}
+	return append(kept, last)
+}
+
+// offLine is how far p is, in meters, from the segment from a to b.
+func offLine(p, a, b [2]float64) float64 {
+	const mPerDeg = 111_320
+	k := math.Cos(a[1] * math.Pi / 180)
+	px, py := (p[0]-a[0])*mPerDeg*k, (p[1]-a[1])*mPerDeg
+	bx, by := (b[0]-a[0])*mPerDeg*k, (b[1]-a[1])*mPerDeg
+	t := 0.0
+	if l := bx*bx + by*by; l > 0 {
+		t = math.Max(0, math.Min(1, (px*bx+py*by)/l))
+	}
+	return math.Hypot(px-t*bx, py-t*by)
 }

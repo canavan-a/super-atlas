@@ -1,21 +1,29 @@
-import { useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useEffect, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Icon } from '../components/Icon';
 import { Button, Card, TextField } from '../components/ui';
+import { friendStatus } from '../friends/status';
 import { Friend, useFriends } from '../friends/useFriends';
 import { shareInvite } from '../friends/shareInvite';
 import { Theme, useTheme, useThemedStyles } from '../theme';
-import { timeAgo } from '../time';
 
 export default function FriendsScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { ghostMode, setGhostMode } = useAuth();
-  const { friends, reload } = useFriends();
+  const navigation = useNavigation<any>();
+  // Every few seconds, so new requests and friends' whereabouts stay current.
+  const { friends, reload } = useFriends(5000);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, []);
   const [sharing, setSharing] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const [email, setEmail] = useState('');
@@ -57,26 +65,18 @@ export default function FriendsScreen() {
     }
   };
 
-  const accept = async (f: Friend) => {
-    await apiJson(`/friends/${f.friendshipId}/accept`, { method: 'POST' }).catch(() => {});
+  // Accepting or declining a request. Everything else about a friend is on
+  // their own screen (FriendScreen).
+  const answer = async (f: Friend, accept: boolean) => {
+    setNotice(null);
+    try {
+      await apiJson(accept ? `/friends/${f.friendshipId}/accept` : `/friends/${f.friendshipId}`, {
+        method: accept ? 'POST' : 'DELETE',
+      });
+    } catch (e: any) {
+      setNotice({ text: e.message ?? 'Could not answer the request', error: true });
+    }
     await reload();
-  };
-
-  const remove = async (f: Friend) => {
-    await apiJson(`/friends/${f.friendshipId}`, { method: 'DELETE' }).catch(() => {});
-    await reload();
-  };
-
-  const confirmRemove = (f: Friend) => {
-    const pending = f.status === 'pending';
-    Alert.alert(
-      pending ? 'Cancel request?' : `Remove ${f.displayName}?`,
-      pending ? undefined : "You'll stop seeing each other on the map.",
-      [
-        { text: 'Keep', style: 'cancel' },
-        { text: pending ? 'Cancel request' : 'Remove', style: 'destructive', onPress: () => remove(f) },
-      ]
-    );
   };
 
   const toggleGhost = (on: boolean) => {
@@ -131,8 +131,8 @@ export default function FriendsScreen() {
             <Card key={f.friendshipId} style={styles.row}>
               <Avatar name={f.displayName} avatarId={f.avatarId} size={40} />
               <Text style={[styles.rowTitle, styles.flex]}>{f.displayName}</Text>
-              <Button label="Accept" onPress={() => accept(f)} style={styles.smallButton} />
-              <Button label="Decline" onPress={() => remove(f)} variant="secondary" style={styles.smallButton} />
+              <Button label="Accept" onPress={() => answer(f, true)} style={styles.smallButton} />
+              <Button label="Decline" onPress={() => answer(f, false)} variant="secondary" style={styles.smallButton} />
             </Card>
           ))}
         </>
@@ -150,19 +150,24 @@ export default function FriendsScreen() {
       keyExtractor={(f) => f.friendshipId}
       ListHeaderComponent={header}
       renderItem={({ item }) => (
-        <Pressable onPress={() => confirmRemove(item)}>
+        <Pressable onPress={() => navigation.navigate('Friend', { friendId: item.friendId })}>
           <Card style={styles.row}>
             <Avatar name={item.displayName} avatarId={item.avatarId} size={40} />
             <View style={styles.flex}>
               <Text style={styles.rowTitle}>{item.displayName}</Text>
-              <Text style={styles.rowMeta}>
-                {item.status === 'pending'
-                  ? 'Request sent'
-                  : item.lastSeenAt
-                    ? `Seen ${timeAgo(item.lastSeenAt)}`
-                    : 'Location hidden'}
-              </Text>
+              <Text style={styles.rowMeta}>{friendStatus(item, now)}</Text>
             </View>
+            {item.lastSeenAt && (
+              <Pressable
+                style={styles.mapButton}
+                onPress={() => navigation.navigate('Map', { focusId: item.friendId })}
+                hitSlop={8}
+                accessibilityLabel={`Show ${item.displayName} on the map`}
+              >
+                <Icon name="pin" color={theme.primary} size={20} />
+              </Pressable>
+            )}
+            <Icon name="chevron" color={theme.textMuted} size={18} />
           </Card>
         </Pressable>
       )}
@@ -199,6 +204,14 @@ const makeStyles = (theme: Theme) =>
       marginBottom: 8,
     },
     row: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8, paddingVertical: 14 },
+    mapButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: theme.surfaceAlt,
+    },
     rowTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
     rowMeta: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
     smallButton: { paddingVertical: 8, paddingHorizontal: 12 },

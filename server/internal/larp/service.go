@@ -108,7 +108,7 @@ func (s *Service) createFakeFriends(ctx context.Context, ownerID string, base st
 		}
 
 		lat, lng := jitter(base)
-		if err := s.locationService.UpdateLocation(ctx, id, lat, lng, nil, time.Now()); err != nil {
+		if err := s.locationService.UpdateLocation(ctx, id, location.Fix{Latitude: lat, Longitude: lng, RecordedAt: time.Now()}); err != nil {
 			return nil, err
 		}
 		fakeIDs = append(fakeIDs, id)
@@ -147,7 +147,7 @@ func (s *Service) startSimulation(ownerID string, fakeIDs []string, base struct{
 					pos[0] += (rand.Float64()*2 - 1) * simStepDegrees
 					pos[1] += (rand.Float64()*2 - 1) * simStepDegrees
 					positions[id] = pos
-					_ = s.locationService.UpdateLocation(ctx, id, pos[0], pos[1], nil, time.Now())
+					_ = s.locationService.UpdateLocation(ctx, id, location.Fix{Latitude: pos[0], Longitude: pos[1], RecordedAt: time.Now()})
 				}
 			}
 		}

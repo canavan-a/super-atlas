@@ -1,9 +1,17 @@
 // Package npc runs simulated friends for testing: made-up people around
-// Albany, NY who drive from home to work, out to lunch and dinner, and home
-// again each day, on real roads at the speed limit. Each has a fixed
+// Albany, NY who are always on the move, driving between businesses on real
+// roads at the speed limit (highways faster than streets) and stopping at
+// each for a few minutes. Now and then, more often on weekends, one goes on a
+// road trip for a few days and comes back. Each has a fixed
 // @lunargen.com email; sending a friend request to one is accepted at once,
 // and from then on its position streams like a real friend's.
 package npc
+
+import (
+	"math"
+	"sort"
+	"strings"
+)
 
 // Place is somewhere an NPC spends time. Coordinates are from OpenStreetMap
 // (Nominatim) for the address given.
@@ -56,10 +64,58 @@ var places = map[string]Place{
 	"food-swiftys":     {"Swifty's", "392 Kenwood Ave, Delmar, NY", 42.6220471, -73.8327691},
 	"food-bountiful":   {"Bountiful Bread", "Stuyvesant Plaza, Albany, NY", 42.6845192, -73.8397010},
 	"food-cheesecake":  {"The Cheesecake Factory", "1417 Central Ave, Colonie, NY", 42.7103709, -73.8173242},
+
+	// Road trip stops.
+	"trip-buffalo-canalside": {"Canalside", "Canalside, Buffalo, NY", 42.8766286, -78.8786732},
+	"trip-buffalo-anchorbar": {"Anchor Bar", "1047 Main St, Buffalo, NY", 42.9023050, -78.8686878},
+	"trip-buffalo-niagara":   {"Niagara Falls State Park", "Niagara Falls, NY", 43.0809524, -79.0683019},
+	"trip-nyc-katzs":         {"Katz's Delicatessen", "205 E Houston St, New York, NY", 40.7223431, -73.9873530},
+	"trip-nyc-joes":          {"Joe's Pizza", "7 Carmine St, New York, NY", 40.7305674, -74.0020920},
+	"trip-nyc-bbpark":        {"Brooklyn Bridge Park", "Brooklyn, NY", 40.6982888, -73.9999297},
+	"trip-li-jonesbeach":     {"Jones Beach State Park", "Wantagh, NY", 40.5903821, -73.5463473},
+	"trip-li-greenport":      {"Greenport", "Greenport, NY", 41.1032958, -72.3593093},
+	"trip-li-montauk":        {"Montauk Point Lighthouse", "Montauk, NY", 41.0708988, -71.8573081},
+	"trip-mtl-schwartzs":     {"Schwartz's", "3895 Boul Saint-Laurent, Montréal, QC", 45.5163277, -73.5776499},
+	"trip-mtl-jeantalon":     {"Marché Jean-Talon", "Montréal, QC", 45.5359145, -73.6150625},
+	"trip-mtl-vieuxport":     {"Vieux-Port", "Montréal, QC", 45.5042344, -73.5529866},
+	"trip-tor-stlawrence":    {"St. Lawrence Market", "Toronto, ON", 43.6447293, -79.3804008},
+	"trip-tor-cntower":       {"CN Tower", "Toronto, ON", 43.6425637, -79.3870872},
+	"trip-tor-kensington":    {"Kensington Market", "Toronto, ON", 43.6552136, -79.4022604},
+	"trip-cape-hyannis":      {"Main Street", "Hyannis, MA", 41.6528557, -70.2837675},
+	"trip-cape-chatham":      {"Chatham Lighthouse", "Chatham, MA", 41.6714041, -69.9498826},
+	"trip-cape-ptown":        {"MacMillan Pier", "Provincetown, MA", 42.0492944, -70.1816492},
 }
 
-// NPC is one simulated friend: where they live and work, and where they go
-// for lunch (from work, back to work) and dinner (from work, then home).
+// localStops are where NPCs stop around Albany: every workplace and
+// restaurant. (Homes are kept for reference but no longer visited.)
+var localStops = func() []string {
+	var out []string
+	for key := range places {
+		if strings.HasPrefix(key, "work-") || strings.HasPrefix(key, "food-") {
+			out = append(out, key)
+		}
+	}
+	sort.Strings(out)
+	return out
+}()
+
+// hub is where road trips leave from and come back to: Crossgates, by the
+// Thruway and the Northway.
+const hub = "work-crossgates"
+
+// destinations are road trips: drive from hub to the first stop, wander
+// between the stops for a few days, then drive home from the first stop.
+var destinations = [][]string{
+	{"trip-buffalo-canalside", "trip-buffalo-anchorbar", "trip-buffalo-niagara"},
+	{"trip-nyc-katzs", "trip-nyc-joes", "trip-nyc-bbpark"},
+	{"trip-li-jonesbeach", "trip-li-greenport", "trip-li-montauk"},
+	{"trip-mtl-schwartzs", "trip-mtl-jeantalon", "trip-mtl-vieuxport"},
+	{"trip-tor-stlawrence", "trip-tor-cntower", "trip-tor-kensington"},
+	{"trip-cape-hyannis", "trip-cape-chatham", "trip-cape-ptown"},
+}
+
+// NPC is one simulated friend. Home, work and favorite restaurants are kept
+// from when NPCs ran a daily routine; they now wander (schedule.go).
 type NPC struct {
 	Name   string
 	Email  string
@@ -96,30 +152,83 @@ var cast = []NPC{
 		[]string{"food-cheesecake", "food-tanpopo", "food-yonos"}},
 }
 
-// Trips lists every drive any NPC can make, as [from, to] place keys: what
-// the route generator fetches and routes.json holds.
+// Trips lists every drive an NPC can make, as [from, to] place keys: what
+// the route generator fetches and routes.json holds. That is each edge of
+// the wandering graph (neighbors) plus hub to each destination and back.
 func Trips() [][2]string {
-	seen := map[[2]string]bool{}
 	var out [][2]string
-	add := func(from, to string) {
-		t := [2]string{from, to}
-		if !seen[t] {
-			seen[t] = true
-			out = append(out, t)
+	for _, from := range sortedKeys(neighbors) {
+		for _, to := range neighbors[from] {
+			out = append(out, [2]string{from, to})
 		}
 	}
-	for _, n := range cast {
-		add(n.Home, n.Work)
-		for _, f := range n.Lunch {
-			add(n.Work, f)
-			add(f, n.Work)
-		}
-		for _, f := range n.Dinner {
-			add(n.Work, f)
-			add(f, n.Home)
-		}
+	for _, d := range destinations {
+		out = append(out, [2]string{hub, d[0]}, [2]string{d[0], hub})
 	}
 	return out
+}
+
+// neighbors is where an NPC can drive next from each stop. Around Albany:
+// the 4 nearest stops at least a kilometer off, plus 2 farther ones so they
+// roam the whole area (both ways, so every drive can be driven back). On a
+// road trip: any other stop at the destination.
+var neighbors = func() map[string][]string {
+	set := map[string]map[string]bool{}
+	link := func(a, b string) {
+		for _, p := range [][2]string{{a, b}, {b, a}} {
+			if set[p[0]] == nil {
+				set[p[0]] = map[string]bool{}
+			}
+			set[p[0]][p[1]] = true
+		}
+	}
+	for _, from := range localStops {
+		var others []string
+		for _, to := range localStops {
+			if to != from && metersBetween(places[from], places[to]) >= 1000 {
+				others = append(others, to)
+			}
+		}
+		sort.SliceStable(others, func(i, j int) bool {
+			return metersBetween(places[from], places[others[i]]) < metersBetween(places[from], places[others[j]])
+		})
+		for _, to := range others[:4] {
+			link(from, to)
+		}
+		link(from, others[len(others)/2])
+		link(from, others[len(others)-1])
+	}
+	for _, d := range destinations {
+		for _, a := range d {
+			for _, b := range d {
+				if a != b {
+					link(a, b)
+				}
+			}
+		}
+	}
+	out := map[string][]string{}
+	for from, tos := range set {
+		out[from] = sortedKeys(tos)
+	}
+	return out
+}()
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// metersBetween is the rough straight-line distance between two places.
+func metersBetween(a, b Place) float64 {
+	const mPerDeg = 111_320
+	dx := (a.Lng - b.Lng) * mPerDeg * math.Cos(a.Lat*math.Pi/180)
+	dy := (a.Lat - b.Lat) * mPerDeg
+	return math.Hypot(dx, dy)
 }
 
 // PlaceAt returns the place with this key, for the route generator.

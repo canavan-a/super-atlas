@@ -7,6 +7,7 @@ import { ensureBackgroundLocationTask } from '../location/backgroundTask';
 import { PermissionsContext } from '../location/permissionsContext';
 import { usePermissionsGate } from '../location/usePermissionsGate';
 import { splashHold } from '../logo/splashHold';
+import FriendScreen from '../screens/FriendScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import MapScreen from '../screens/MapScreen';
 import PermissionsGateScreen from '../screens/PermissionsGateScreen';
@@ -17,8 +18,8 @@ import { useTheme } from '../theme';
 
 const Stack = createNativeStackNavigator();
 
-// Six screens in all: Sign in, Permissions, Map (home), Friends, Settings,
-// and the privacy policy (from Settings).
+// Seven screens in all: Sign in, Permissions, Map (home), Friends, one
+// Friend, Settings, and the privacy policy (from Settings).
 export default function RootNavigator() {
   const theme = useTheme();
   const { status } = useAuth();
@@ -82,6 +83,7 @@ export default function RootNavigator() {
             ),
           })}
         />
+        <Stack.Screen name="Friend" component={FriendScreen} options={{ title: '' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Privacy" component={PrivacyPolicy} options={{ title: 'Privacy policy' }} />
       </Stack.Navigator>

@@ -43,6 +43,7 @@ type wsIncoming struct {
 	Latitude   float64  `json:"latitude"`
 	Longitude  float64  `json:"longitude"`
 	AccuracyM  *float64 `json:"accuracyM,omitempty"`
+	SpeedMps   *float64 `json:"speedMps,omitempty"`
 	RecordedAt string   `json:"recordedAt"`
 }
 
@@ -88,7 +89,9 @@ func (h *Handlers) Stream(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			recordedAt = time.Now()
 		}
-		_ = h.service.UpdateLocation(r.Context(), userID, in.Latitude, in.Longitude, in.AccuracyM, recordedAt)
+		_ = h.service.UpdateLocation(r.Context(), userID, Fix{
+			Latitude: in.Latitude, Longitude: in.Longitude, AccuracyM: in.AccuracyM, SpeedMps: validSpeed(in.SpeedMps), RecordedAt: recordedAt,
+		})
 	}
 }
 
@@ -96,6 +99,7 @@ type batchPoint struct {
 	Latitude   float64  `json:"latitude"`
 	Longitude  float64  `json:"longitude"`
 	AccuracyM  *float64 `json:"accuracyM,omitempty"`
+	SpeedMps   *float64 `json:"speedMps,omitempty"`
 	RecordedAt string   `json:"recordedAt"`
 }
 
@@ -128,7 +132,9 @@ func (h *Handlers) BatchIngest(w http.ResponseWriter, r *http.Request) {
 		latestTime = time.Now()
 	}
 
-	if err := h.service.UpdateLocation(r.Context(), userID, latest.Latitude, latest.Longitude, latest.AccuracyM, latestTime); err != nil {
+	if err := h.service.UpdateLocation(r.Context(), userID, Fix{
+		Latitude: latest.Latitude, Longitude: latest.Longitude, AccuracyM: latest.AccuracyM, SpeedMps: validSpeed(latest.SpeedMps), RecordedAt: latestTime,
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save location")
 		return
 	}
@@ -161,4 +167,13 @@ func (h *Handlers) Snapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, locs)
+}
+
+// validSpeed drops a speed no phone could have measured: negative (Android
+// and iOS use -1 for "unknown") or faster than an airliner.
+func validSpeed(mps *float64) *float64 {
+	if mps == nil || *mps < 0 || *mps > 300 {
+		return nil
+	}
+	return mps
 }

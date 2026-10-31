@@ -2,11 +2,14 @@ package npc
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/canavan-a/super-atlas/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/avatar"
 	"github.com/canavan-a/super-atlas/server/internal/friends"
 	"github.com/canavan-a/super-atlas/server/internal/location"
 	"github.com/google/uuid"
@@ -21,39 +24,69 @@ const (
 	parkedEvery = 10 * time.Second
 )
 
+// avatars holds each NPC's profile picture, named after their email before
+// the @ (see avatars/README.md).
+//
+//go:embed avatars/*.png
+var avatars embed.FS
+
 // Service keeps the NPCs' accounts and streams their positions.
 type Service struct {
 	authStore       *auth.Store
 	friendStore     *friends.Store
 	locationService *location.Service
+	avatarStore     *avatar.Store
 	// userIDs maps each NPC's user id to its index in cast. Set by Setup,
 	// read-only after.
 	userIDs map[string]int
 }
 
-func NewService(authStore *auth.Store, friendStore *friends.Store, locationService *location.Service) *Service {
-	return &Service{authStore: authStore, friendStore: friendStore, locationService: locationService}
+func NewService(authStore *auth.Store, friendStore *friends.Store, locationService *location.Service, avatarStore *avatar.Store) *Service {
+	return &Service{authStore: authStore, friendStore: friendStore, locationService: locationService, avatarStore: avatarStore}
 }
 
-// Setup makes sure every NPC has an account, creating any that are missing.
+// Setup makes sure every NPC has an account and a profile picture, creating
+// any that are missing.
 func (s *Service) Setup(ctx context.Context) error {
 	s.userIDs = make(map[string]int, len(cast))
 	for i, n := range cast {
 		u, err := s.authStore.GetUserByEmail(ctx, n.Email)
-		if errors.Is(err, auth.ErrNotFound) {
-			id := uuid.NewString()
+		var id string
+		switch {
+		case errors.Is(err, auth.ErrNotFound):
+			id = uuid.NewString()
 			if err := s.authStore.CreateUser(ctx, id, n.Email, n.Name); err != nil {
 				return err
 			}
-			s.userIDs[id] = i
-			continue
+		case err != nil:
+			return err
+		default:
+			id = u.ID
 		}
-		if err != nil {
+		s.userIDs[id] = i
+		if err := s.setAvatar(ctx, id, n); err != nil {
 			return err
 		}
-		s.userIDs[u.ID] = i
 	}
 	return nil
+}
+
+// setAvatar gives n their picture unless they already have one, so the
+// picture's id (and every app's cached copy) stays the same across restarts.
+func (s *Service) setAvatar(ctx context.Context, userID string, n NPC) error {
+	if has, err := s.avatarStore.Has(ctx, userID); err != nil || has {
+		return err
+	}
+	data, err := avatars.ReadFile("avatars/" + strings.Split(n.Email, "@")[0] + ".png")
+	if err != nil {
+		return err
+	}
+	jpeg, err := avatar.Process(data)
+	if err != nil {
+		return err
+	}
+	_, err = s.avatarStore.Set(ctx, userID, jpeg)
+	return err
 }
 
 // IsNPC says whether userID is one of the NPCs, whose friend requests are
@@ -83,7 +116,9 @@ func (s *Service) Run(ctx context.Context) {
 				if err != nil || len(viewers) == 0 {
 					continue
 				}
-				if err := s.locationService.UpdateLocation(ctx, id, lngLat[1], lngLat[0], nil, now); err != nil {
+				speed := speedAt(cast[i], now)
+				fix := location.Fix{Latitude: lngLat[1], Longitude: lngLat[0], SpeedMps: &speed, RecordedAt: now}
+				if err := s.locationService.UpdateLocation(ctx, id, fix); err != nil {
 					log.Printf("npc %s: %v", cast[i].Email, err)
 					continue
 				}

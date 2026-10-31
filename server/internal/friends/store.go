@@ -32,6 +32,13 @@ type FriendView struct {
 	// LastSeenAt is when the friend's location last updated; only set for
 	// accepted friends who aren't in ghost mode.
 	LastSeenAt *string `json:"lastSeenAt,omitempty"`
+	// SpeedMps (when their phone said) and HereSince (when they arrived
+	// near where they are) go with LastSeenAt.
+	SpeedMps  *float64 `json:"speedMps,omitempty"`
+	HereSince *string  `json:"hereSince,omitempty"`
+	// GhostMode: this friend hides from everyone (only said of accepted
+	// friends).
+	GhostMode bool `json:"ghostMode"`
 }
 
 type Store struct {
@@ -101,7 +108,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT f.id, f.addressee_id, f.status, u.id, u.display_name, COALESCE(a.id, ''),
-		       CASE WHEN f.status = 'accepted' AND COALESCE(us.sharing_paused, 0) = 0 THEN l.recorded_at END
+		       COALESCE(us.sharing_paused, 0), l.recorded_at, l.speed_mps, l.here_since
 		FROM friendships f
 		JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
 		LEFT JOIN user_settings us ON us.user_id = u.id
@@ -118,14 +125,24 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 	views := []FriendView{}
 	for rows.Next() {
 		var addresseeID string
-		var lastSeen sql.NullString
+		var ghost bool
+		var lastSeen, hereSince sql.NullString
+		var speed sql.NullFloat64
 		var v FriendView
-		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &v.AvatarID, &lastSeen); err != nil {
+		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &v.AvatarID,
+			&ghost, &lastSeen, &speed, &hereSince); err != nil {
 			return nil, err
 		}
 		v.IsIncomingRequest = v.Status == "pending" && addresseeID == userID
-		if lastSeen.Valid {
+		v.GhostMode = v.Status == "accepted" && ghost
+		if v.Status == "accepted" && !ghost && lastSeen.Valid {
 			v.LastSeenAt = &lastSeen.String
+			if speed.Valid {
+				v.SpeedMps = &speed.Float64
+			}
+			if hereSince.Valid {
+				v.HereSince = &hereSince.String
+			}
 		}
 		views = append(views, v)
 	}

@@ -19,7 +19,7 @@ const NEUTRAL = { bearing: 0, pitch: 0 };
 export default function MapScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const { locations, now, pendingCount, noFriends, selected, setSelectedId } = useMapData();
+  const { locations, now, pendingCount, noFriends, selected, setSelectedId, focus, focusDone } = useMapData();
   const container = useRef<View>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef(new Map<string, maplibregl.Marker>());
@@ -82,6 +82,17 @@ export default function MapScreen() {
   useEffect(() => {
     map.current?.setStyle(theme.mapStyle);
   }, [theme.mapStyle]);
+
+  // Opened from "Show on map": follow that friend, as if they'd been tapped.
+  useEffect(() => {
+    const m = map.current;
+    if (!focus || !m) return;
+    fittedOnce.current = true; // don't zoom out to everyone over it
+    setSelectedId(focus.userId);
+    following.current = focus.userId;
+    m.easeTo({ center: [focus.longitude, focus.latitude], duration: 600 });
+    focusDone();
+  }, [focus?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep one marker per friend, sliding to each new position, with the
   // camera sliding along on whoever is followed.

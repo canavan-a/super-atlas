@@ -59,6 +59,13 @@ func (s *Store) Set(ctx context.Context, userID string, jpegData []byte) (string
 	return id, err
 }
 
+// Has says whether userID has a picture.
+func (s *Store) Has(ctx context.Context, userID string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM avatars WHERE user_id = ?`, userID).Scan(&n)
+	return n > 0, err
+}
+
 func (s *Store) Delete(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM avatars WHERE user_id = ?`, userID)
 	return err

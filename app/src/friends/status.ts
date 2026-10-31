@@ -1,0 +1,55 @@
+import { isStale, timeAgo } from '../time';
+import type { Friend } from './useFriends';
+
+// Slower than this (about 5 mph) counts as stopped: GPS jitter and walking
+// around a shop shouldn't read as on the move.
+const MOVING_MPS = 2.2;
+
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** Meters a second as whole miles an hour. */
+export function mph(mps: number): number {
+  return Math.round(mps * 2.23694);
+}
+
+/** Whether a friend's last fix says they're on the move. */
+export function isMoving(w: { speedMps?: number; recordedAt?: string }, now = Date.now()): boolean {
+  return w.speedMps !== undefined && w.speedMps >= MOVING_MPS && !!w.recordedAt && !isStale(w.recordedAt, now);
+}
+
+/** "23 min", "2 h 5 min", "3 days": how long ago iso was. */
+export function durationSince(iso: string, now = Date.now()): string {
+  const diff = Math.max(0, now - new Date(iso).getTime());
+  if (diff < HOUR) return `${Math.max(1, Math.floor(diff / MINUTE))} min`;
+  if (diff < DAY) {
+    const min = Math.floor((diff % HOUR) / MINUTE);
+    return `${Math.floor(diff / HOUR)} h${min ? ` ${min} min` : ''}`;
+  }
+  const days = Math.floor(diff / DAY);
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+/**
+ * One line on where a friend is at: "Moving · 42 mph", "Here for 23 min",
+ * "Here for 3 h · seen 2 h ago" when their phone hasn't checked in lately,
+ * or just "Seen 5 min ago".
+ */
+export function whereabouts(w: { recordedAt: string; speedMps?: number; hereSince?: string }, now = Date.now()): string {
+  if (isMoving(w, now)) return `Moving · ${mph(w.speedMps!)} mph`;
+  if (w.hereSince) {
+    const here = now - new Date(w.hereSince).getTime() < MINUTE ? 'Just got here' : `Here for ${durationSince(w.hereSince, now)}`;
+    return isStale(w.recordedAt, now) ? `${here} · seen ${timeAgo(w.recordedAt, now)}` : here;
+  }
+  return `Seen ${timeAgo(w.recordedAt, now)}`;
+}
+
+/** The status line for a friend in the friends list. */
+export function friendStatus(f: Friend, now = Date.now()): string {
+  if (f.status === 'pending') return f.isIncomingRequest ? 'Wants to be friends' : 'Request sent';
+  if (f.ghostMode) return 'In ghost mode';
+  return f.lastSeenAt
+    ? whereabouts({ recordedAt: f.lastSeenAt, speedMps: f.speedMps, hereSince: f.hereSince }, now)
+    : 'No location yet';
+}

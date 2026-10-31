@@ -23,14 +23,15 @@ type Follow = 'me' | string | null;
 // Friends (with a badge for requests waiting on you) and "fit everyone".
 // Tapping someone (you included) follows them at the current zoom until you
 // move the map yourself; tapping a friend also shows who it is and when they
-// were last seen. Dots slide to new positions rather than jumping.
+// were last seen. "Show on map" in the friends list opens the map following
+// that friend. Dots slide to new positions rather than jumping.
 // (MapScreen.web.tsx is the browser's version.)
 export default function MapScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const cameraRef = useRef<CameraRef>(null);
-  const { locations, me, now, pendingCount, noFriends, selected, setSelectedId } = useMapData();
+  const { locations, me, now, pendingCount, noFriends, selected, setSelectedId, focus, focusDone } = useMapData();
   const centeredOnce = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [follow, setFollow] = useState<Follow>(null);
@@ -86,6 +87,15 @@ export default function MapScreen() {
     }
   }, [follow, followLng, followLat]);
 
+  // Opened from "Show on map": follow that friend, as if they'd been tapped.
+  const focusUserId = focus?.userId;
+  useEffect(() => {
+    if (!focusUserId || !mapReady) return;
+    setSelectedId(focusUserId);
+    setFollow(focusUserId);
+    focusDone();
+  }, [focusUserId, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const onFriendPress = (userId: string) => {
     setSelectedId(userId);
     setFollow(userId);
@@ -97,7 +107,9 @@ export default function MapScreen() {
   };
 
   const onMapPress = (e: NativeSyntheticEvent<any>) => {
-    if (e.nativeEvent?.features?.length) return; // a marker tap bubbling up
+    // A marker's press bubbles up to the map as an onPress too, carrying the
+    // marker's id; without this it undid the follow the marker just started.
+    if (e.nativeEvent?.id !== undefined || e.nativeEvent?.features?.length) return;
     setSelectedId(null);
     setFollow(null);
   };

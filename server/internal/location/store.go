@@ -18,8 +18,22 @@ type Location struct {
 	Latitude    float64
 	Longitude   float64
 	AccuracyM   *float64
+	SpeedMps    *float64
 	RecordedAt  time.Time
 	UpdatedAt   time.Time
+	// HereSince is when the user arrived near where they are now (zero if
+	// unknown): see Upsert.
+	HereSince time.Time
+}
+
+// Fix is one position reported by a user's phone (or an NPC).
+type Fix struct {
+	Latitude  float64
+	Longitude float64
+	// AccuracyM and SpeedMps are nil when the phone doesn't say.
+	AccuracyM  *float64
+	SpeedMps   *float64
+	RecordedAt time.Time
 }
 
 type Store struct {
@@ -30,27 +44,52 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-func (s *Store) Upsert(ctx context.Context, userID string, lat, lng float64, accuracy *float64, recordedAt time.Time) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO locations (user_id, latitude, longitude, accuracy_m, recorded_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+// Upsert stores fix as userID's position unless a newer one is already
+// stored, in which case ok is false. It returns when userID arrived near
+// here: kept from the stored position while they stay within about 100 m of
+// where they first stopped, otherwise reset to this fix.
+func (s *Store) Upsert(ctx context.Context, userID string, fix Fix) (hereSince time.Time, ok bool, err error) {
+	recordedAt := fix.RecordedAt.UTC().Format(timeLayout)
+	var since string
+	err = s.db.QueryRowContext(ctx, `
+		INSERT INTO locations (user_id, latitude, longitude, accuracy_m, speed_mps, recorded_at, updated_at, here_since, here_lat, here_lng)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			latitude = excluded.latitude,
 			longitude = excluded.longitude,
 			accuracy_m = excluded.accuracy_m,
+			speed_mps = excluded.speed_mps,
 			recorded_at = excluded.recorded_at,
-			updated_at = excluded.updated_at
+			updated_at = excluded.updated_at,
+			here_since = CASE WHEN `+stillNear+` THEN locations.here_since ELSE excluded.here_since END,
+			here_lat = CASE WHEN `+stillNear+` THEN locations.here_lat ELSE excluded.here_lat END,
+			here_lng = CASE WHEN `+stillNear+` THEN locations.here_lng ELSE excluded.here_lng END
 		WHERE excluded.recorded_at >= locations.recorded_at
-	`, userID, lat, lng, accuracy, recordedAt.UTC().Format(timeLayout), time.Now().UTC().Format(timeLayout))
-	return err
+		RETURNING here_since
+	`, userID, fix.Latitude, fix.Longitude, fix.AccuracyM, fix.SpeedMps, recordedAt, time.Now().UTC().Format(timeLayout),
+		recordedAt, fix.Latitude, fix.Longitude).Scan(&since)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	hereSince, _ = time.Parse(timeLayout, since)
+	return hereSince, true, nil
 }
+
+// stillNear says, in an upsert, whether the new position is within about
+// 100 m of the spot the stored here_since belongs to.
+const stillNear = `(locations.here_since IS NOT NULL
+	AND ABS(excluded.latitude - locations.here_lat) < 0.0009
+	AND ABS(excluded.longitude - locations.here_lng) < 0.0012)`
 
 func (s *Store) GetForUsers(ctx context.Context, userIDs []string) ([]Location, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
 	// Users in ghost mode are left out here, so callers never have to filter.
-	query := `SELECT l.user_id, u.display_name, COALESCE(a.id, ''), l.latitude, l.longitude, l.accuracy_m, l.recorded_at, l.updated_at
+	query := `SELECT l.user_id, u.display_name, COALESCE(a.id, ''), l.latitude, l.longitude, l.accuracy_m, l.speed_mps, l.recorded_at, l.updated_at, l.here_since
 		FROM locations l
 		JOIN users u ON u.id = l.user_id
 		LEFT JOIN avatars a ON a.user_id = l.user_id
@@ -70,13 +109,18 @@ func (s *Store) GetForUsers(ctx context.Context, userIDs []string) ([]Location, 
 	for rows.Next() {
 		var l Location
 		var recordedAt, updatedAt string
-		var accuracy sql.NullFloat64
-		if err := rows.Scan(&l.UserID, &l.DisplayName, &l.AvatarID, &l.Latitude, &l.Longitude, &accuracy, &recordedAt, &updatedAt); err != nil {
+		var hereSince sql.NullString
+		var accuracy, speed sql.NullFloat64
+		if err := rows.Scan(&l.UserID, &l.DisplayName, &l.AvatarID, &l.Latitude, &l.Longitude, &accuracy, &speed, &recordedAt, &updatedAt, &hereSince); err != nil {
 			return nil, err
 		}
 		if accuracy.Valid {
 			l.AccuracyM = &accuracy.Float64
 		}
+		if speed.Valid {
+			l.SpeedMps = &speed.Float64
+		}
+		l.HereSince, _ = time.Parse(timeLayout, hereSince.String)
 		l.RecordedAt, _ = time.Parse(timeLayout, recordedAt)
 		l.UpdatedAt, _ = time.Parse(timeLayout, updatedAt)
 		locs = append(locs, l)

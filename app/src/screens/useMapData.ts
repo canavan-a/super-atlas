@@ -1,3 +1,4 @@
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useEffect, useMemo, useState } from 'react';
 import { useFriends } from '../friends/useFriends';
 import { useLocationStream } from '../location/useLocationStream';
@@ -6,21 +7,31 @@ import { useLocationStream } from '../location/useLocationStream';
 // filtered to current friends (the stream only ever adds people, so this
 // drops anyone just removed), your own position (Android only; null on the
 // web), the count of requests waiting on you, which
-// friend is tapped, and a clock that ticks each minute so "last seen" and
-// faded markers stay current.
+// friend is tapped, a clock that ticks each minute so "last seen" and
+// faded markers stay current, and focus: a friend the map was opened to show
+// ("Show on map" in the friends list), once they're on it. The screen
+// follows them and calls focusDone.
 export function useMapData() {
   const { locations: streamed, me } = useLocationStream();
   const { friends } = useFriends();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const navigation = useNavigation<any>();
+  const focusId: string | undefined = (useRoute<any>().params as any)?.focusId;
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60 * 1000);
     return () => clearInterval(t);
   }, []);
 
+  // Friends you may see: accepted and not in ghost mode. The server already
+  // holds ghosts back; this also drops anyone the stream showed before they
+  // went dark.
   const acceptedIds = useMemo(
-    () => (friends ? new Set(friends.filter((f) => f.status === 'accepted').map((f) => f.friendId)) : null),
+    () =>
+      friends
+        ? new Set(friends.filter((f) => f.status === 'accepted' && !f.ghostMode).map((f) => f.friendId))
+        : null,
     [friends]
   );
   const locations = acceptedIds ? streamed.filter((l) => acceptedIds.has(l.userId)) : streamed;
@@ -33,5 +44,7 @@ export function useMapData() {
     noFriends: friends !== null && friends.length === 0,
     selected: locations.find((l) => l.userId === selectedId) ?? null,
     setSelectedId,
+    focus: focusId ? (locations.find((l) => l.userId === focusId) ?? null) : null,
+    focusDone: () => navigation.setParams({ focusId: undefined }),
   };
 }

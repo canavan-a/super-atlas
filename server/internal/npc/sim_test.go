@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/canavan-a/super-atlas/server/internal/auth"
+	"github.com/canavan-a/super-atlas/server/internal/avatar"
 	"github.com/canavan-a/super-atlas/server/internal/friends"
 	"github.com/canavan-a/super-atlas/server/internal/location"
 	"github.com/canavan-a/super-atlas/server/internal/testdb"
@@ -28,16 +29,34 @@ func TestRequestToNPCStartsSharing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sim := NewService(authStore, friendStore, locationService)
+	sim := NewService(authStore, friendStore, locationService, avatar.NewStore(conn))
 	if err := sim.Setup(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// A second start finds the same accounts rather than making new ones.
+	pictures := func() map[string]string {
+		out := map[string]string{}
+		for id := range sim.userIDs {
+			_, avatarID, err := locationStore.Profile(ctx, id)
+			if err != nil || avatarID == "" {
+				t.Fatalf("NPC %s has no picture (%v)", id, err)
+			}
+			out[id] = avatarID
+		}
+		return out
+	}
+	first := pictures()
+	// A second start finds the same accounts and pictures rather than making
+	// new ones.
 	if err := sim.Setup(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if len(sim.userIDs) != len(cast) {
 		t.Fatalf("%d NPC accounts, want %d", len(sim.userIDs), len(cast))
+	}
+	for id, avatarID := range pictures() {
+		if first[id] != avatarID {
+			t.Fatalf("NPC %s got a new picture on restart", id)
+		}
 	}
 	friendService.SetAutoAccept(sim.IsNPC)
 

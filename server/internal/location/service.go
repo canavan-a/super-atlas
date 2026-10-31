@@ -24,7 +24,8 @@ func NewService(store *Store, friendStore *friends.Store, hub *Hub) *Service {
 }
 
 // updatePayload is one friend's position, as pushed over the stream and
-// returned by the snapshot endpoint.
+// returned by the snapshot endpoint. SpeedMps is how fast they were going
+// (when their phone says), and HereSince when they arrived near this spot.
 type updatePayload struct {
 	Type        string   `json:"type"`
 	UserID      string   `json:"userId"`
@@ -33,11 +34,13 @@ type updatePayload struct {
 	Latitude    float64  `json:"latitude"`
 	Longitude   float64  `json:"longitude"`
 	AccuracyM   *float64 `json:"accuracyM,omitempty"`
+	SpeedMps    *float64 `json:"speedMps,omitempty"`
 	RecordedAt  string   `json:"recordedAt"`
+	HereSince   string   `json:"hereSince,omitempty"`
 }
 
 func payloadFor(l Location) updatePayload {
-	return updatePayload{
+	p := updatePayload{
 		Type:        "location_update",
 		UserID:      l.UserID,
 		DisplayName: l.DisplayName,
@@ -45,15 +48,21 @@ func payloadFor(l Location) updatePayload {
 		Latitude:    l.Latitude,
 		Longitude:   l.Longitude,
 		AccuracyM:   l.AccuracyM,
+		SpeedMps:    l.SpeedMps,
 		RecordedAt:  l.RecordedAt.UTC().Format(time.RFC3339),
 	}
+	if !l.HereSince.IsZero() {
+		p.HereSince = l.HereSince.UTC().Format(time.RFC3339)
+	}
+	return p
 }
 
 // UpdateLocation stores a new position for userID and, unless the user is in
-// ghost mode, pushes it live to every accepted friend with an open
-// WebSocket connection.
-func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng float64, accuracy *float64, recordedAt time.Time) error {
-	if err := s.store.Upsert(ctx, userID, lat, lng, accuracy, recordedAt); err != nil {
+// ghost mode, pushes it live to every accepted friend with an open WebSocket
+// connection. A fix older than the stored one is dropped.
+func (s *Service) UpdateLocation(ctx context.Context, userID string, fix Fix) error {
+	hereSince, ok, err := s.store.Upsert(ctx, userID, fix)
+	if err != nil || !ok {
 		return err
 	}
 
@@ -75,10 +84,12 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, lat, lng fl
 		UserID:      userID,
 		DisplayName: p.name,
 		AvatarID:    p.avatarID,
-		Latitude:    lat,
-		Longitude:   lng,
-		AccuracyM:   accuracy,
-		RecordedAt:  recordedAt,
+		Latitude:    fix.Latitude,
+		Longitude:   fix.Longitude,
+		AccuracyM:   fix.AccuracyM,
+		SpeedMps:    fix.SpeedMps,
+		RecordedAt:  fix.RecordedAt,
+		HereSince:   hereSince,
 	}))
 	if err != nil {
 		return err
@@ -106,25 +117,40 @@ func (s *Service) profile(ctx context.Context, userID string) (profile, error) {
 }
 
 // ProfileChanged drops userID's cached profile after its picture changes,
-// and re-sends its last position to friends with the map open so they see
-// the new picture without waiting for userID to move. Nothing is sent for
-// someone in ghost mode or who has never shared a position.
+// and re-sends its last position (Refresh) so friends with the map open see
+// the new picture without waiting for userID to move.
 func (s *Service) ProfileChanged(ctx context.Context, userID string) {
 	s.profiles.Delete(userID)
+	s.Refresh(ctx, userID)
+}
+
+// removedPayload tells a viewer to take userID off their map.
+type removedPayload struct {
+	Type   string `json:"type"`
+	UserID string `json:"userId"`
+}
+
+// Refresh brings userID up to date on the open maps of all their friends,
+// after their ghost mode or picture changed: their last position, or, in
+// ghost mode (or with none yet), word to drop them.
+func (s *Service) Refresh(ctx context.Context, userID string) {
+	friendIDs, err := s.friendStore.AcceptedFriendIDs(ctx, userID)
+	if err != nil || len(friendIDs) == 0 {
+		return
+	}
 	locs, err := s.store.GetForUsers(ctx, []string{userID})
-	if err != nil || len(locs) == 0 {
-		return
-	}
-	viewers, err := s.friendStore.AcceptedFriendIDs(ctx, userID)
 	if err != nil {
 		return
 	}
-	payload, err := json.Marshal(payloadFor(locs[0]))
+	payload, err := json.Marshal(removedPayload{Type: "location_removed", UserID: userID})
+	if len(locs) > 0 {
+		payload, err = json.Marshal(payloadFor(locs[0]))
+	}
 	if err != nil {
 		return
 	}
-	for _, viewerID := range viewers {
-		s.hub.PushTo(viewerID, payload)
+	for _, id := range friendIDs {
+		s.hub.PushTo(id, payload)
 	}
 }
 
@@ -154,6 +180,12 @@ func (s *Service) GhostMode(ctx context.Context, userID string) (bool, error) {
 	return settings.SharingPaused, nil
 }
 
+// SetPaused turns ghost mode on or off, and takes userID off (or puts them
+// back on) their friends' open maps right away.
 func (s *Service) SetPaused(ctx context.Context, userID string, paused bool) error {
-	return s.store.SetPaused(ctx, userID, paused)
+	if err := s.store.SetPaused(ctx, userID, paused); err != nil {
+		return err
+	}
+	s.Refresh(ctx, userID)
+	return nil
 }
