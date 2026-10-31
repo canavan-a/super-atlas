@@ -1,11 +1,12 @@
 import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
-import type { CameraRef, LngLatBounds, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
+import type { CameraRef, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { MapChrome } from '../components/MapChrome';
+import { inMiddle } from '../map/bounds';
 import { GLIDE_MS, shouldGlide, useGlide, type LngLat } from '../map/glide';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
@@ -28,7 +29,8 @@ type Follow = 'me' | string | null;
 // zooming in to town level if the map is further out than that (and
 // otherwise keeping the zoom), until you move the map yourself, and shows a
 // card at the bottom: "You", or the friend's picture and when they were last
-// seen. Nudging the map keeps the card; moving them off screen closes it.
+// seen. Nudging the map keeps the card; dragging them toward the edge of the
+// screen (or off it) closes it.
 // "Show on map" in the friends list opens the map following that friend. Dots
 // slide to new positions rather than jumping.
 // (MapScreen.web.tsx is the browser's version.)
@@ -151,14 +153,14 @@ export default function MapScreen() {
     setFollow(null);
   };
 
-  // A nudge keeps the card up; moving the map so far that whoever it's for
-  // is off screen closes it.
+  // A nudge keeps the card up; moving the map so whoever it's for is out of
+  // the middle of the screen (bounds.ts) closes it.
   const shownPerson = meSelected ? me : selected;
   const onRegionDidChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     zoom.current = e.nativeEvent.zoom;
     if (!movedByUser.current) return;
     movedByUser.current = false;
-    if (shownPerson && !inBounds(e.nativeEvent.bounds, shownPerson.longitude, shownPerson.latitude)) {
+    if (shownPerson && !inMiddle(e.nativeEvent.bounds, shownPerson.longitude, shownPerson.latitude)) {
       setSelectedId(null);
     }
   };
@@ -223,13 +225,6 @@ export default function MapScreen() {
       />
     </View>
   );
-}
-
-// Whether a point is inside the map's visible [west, south, east, north],
-// including a view that spans the antimeridian (west > east).
-function inBounds([west, south, east, north]: LngLatBounds, lng: number, lat: number) {
-  if (lat < south || lat > north) return false;
-  return west <= east ? lng >= west && lng <= east : lng >= west || lng <= east;
 }
 
 // A map marker that slides to each new position instead of jumping (glide.ts),

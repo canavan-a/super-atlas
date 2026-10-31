@@ -116,7 +116,8 @@ export function MapChrome({
           />
           <View style={styles.flex}>
             <Text style={styles.cardName}>{selected.displayName || 'Friend'}</Text>
-            <Text style={styles.cardMeta}>{whereabouts(selected, now, place)}</Text>
+            {place && <Text style={styles.cardMeta}>{place}</Text>}
+            <Text style={styles.cardMeta}>{whereabouts(selected, now)}</Text>
           </View>
           <Icon name="chevron" color={theme.textMuted} size={18} />
         </Pressable>

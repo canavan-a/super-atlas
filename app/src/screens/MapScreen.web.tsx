@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { avatarUrl, initialsFor } from '../components/Avatar';
 import { MapChrome } from '../components/MapChrome';
 import type { FriendLocation } from '../location/friendStream';
+import { inMiddle } from '../map/bounds';
 import { GLIDE_MS, glide, shouldGlide, type LngLat } from '../map/glide';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
@@ -55,7 +56,8 @@ export default function MapScreen() {
 
   // Create the map once; tapping empty map closes the friend card, and it or
   // moving the map yourself stops following. A move that leaves the friend
-  // off screen closes their card too (a nudge doesn't).
+  // out of the middle of the screen (bounds.ts) closes their card too (a
+  // nudge doesn't).
   useEffect(() => {
     const el = container.current as unknown as HTMLElement | null;
     if (!el) return;
@@ -75,7 +77,11 @@ export default function MapScreen() {
     });
     m.on('moveend', (e) => {
       const s = shown.current;
-      if (e.originalEvent && s && !m.getBounds().contains([s.longitude, s.latitude])) setSelectedId(null);
+      if (!e.originalEvent || !s) return;
+      const b = m.getBounds();
+      if (!inMiddle([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], s.longitude, s.latitude)) {
+        setSelectedId(null);
+      }
     });
     map.current = m;
     const owned = markers.current;
