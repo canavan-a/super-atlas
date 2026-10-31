@@ -1,5 +1,19 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
+import { settingsStore } from '../settings';
+
+/** Whether this build can look up place names at all (not on the web). */
+export const placeNamesSupported = true;
+
+/** The "Place names" setting and a way to change it. */
+export function usePlaceNamesSetting(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(settingsStore.get().placeNames);
+  useEffect(() => {
+    settingsStore.load().then((s) => setOn(s.placeNames));
+    return settingsStore.subscribe((s) => setOn(s.placeNames));
+  }, []);
+  return [on, (next) => settingsStore.save({ ...settingsStore.get(), placeNames: next })];
+}
 
 // Names looked up so far, by position rounded to about 100 m (a friend sitting
 // still drifts a little with GPS jitter; that shouldn't mean a new lookup).
@@ -20,14 +34,16 @@ const keyFor = (lat: number, lng: number) => `${lat.toFixed(3)},${lng.toFixed(3)
  * the business there ("Starbucks"), else the street ("Stirrup Drive area"),
  * else the neighborhood or town. null until it's known, or when there's
  * nothing to look up, no name for it, or the lookup failed; callers show
- * something else then. Never throws. (placeName.web.ts: always null.)
+ * something else then, and always while the "Place names" setting is off.
+ * Never throws. (placeName.web.ts: always null.)
  */
 export function usePlaceName(at: { latitude: number; longitude: number } | null): string | null {
-  const key = at ? keyFor(at.latitude, at.longitude) : null;
+  const [enabled] = usePlaceNamesSetting();
+  const key = at && enabled ? keyFor(at.latitude, at.longitude) : null;
   const [name, setName] = useState<string | null>(key ? (cache.get(key) ?? null) : null);
 
   useEffect(() => {
-    if (!at || !key) {
+    if (!key) {
       setName(null);
       return;
     }
@@ -39,7 +55,7 @@ export function usePlaceName(at: { latitude: number; longitude: number } | null)
     const failed = failedAt.get(key);
     if (failed !== undefined && Date.now() - failed < RETRY_MS) return;
     let live = true;
-    lookUp(at.latitude, at.longitude).then(
+    lookUp(at!.latitude, at!.longitude).then(
       (label) => {
         failedAt.delete(key);
         cache.set(key, label);

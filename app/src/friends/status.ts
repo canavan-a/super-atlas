@@ -52,11 +52,21 @@ export function whereabouts(
   return `Seen ${timeAgo(w.recordedAt, now)}`;
 }
 
-/** The status line for a friend in the friends list. */
-export function friendStatus(f: Friend, now = Date.now()): string {
+/** Where to look up a place name for a friend (placeName.ts), if anywhere:
+ *  only once they've stopped, since moving shows their speed instead. */
+export function friendSpot(f: Friend, now = Date.now()): { latitude: number; longitude: number } | null {
+  if (f.status !== 'accepted' || f.ghostMode || !f.lastSeenAt) return null;
+  if (f.latitude === undefined || f.longitude === undefined) return null;
+  if (isMoving({ speedMps: f.speedMps, recordedAt: f.lastSeenAt }, now)) return null;
+  return { latitude: f.latitude, longitude: f.longitude };
+}
+
+/** The status line for a friend in the friends list, with the place name
+ *  for where they are when there is one (friendSpot). */
+export function friendStatus(f: Friend, now = Date.now(), place?: string | null): string {
   if (f.status === 'pending') return f.isIncomingRequest ? 'Wants to be friends' : 'Request sent';
   if (f.ghostMode) return 'In ghost mode';
   return f.lastSeenAt
-    ? whereabouts({ recordedAt: f.lastSeenAt, speedMps: f.speedMps, hereSince: f.hereSince }, now)
+    ? whereabouts({ recordedAt: f.lastSeenAt, speedMps: f.speedMps, hereSince: f.hereSince }, now, place)
     : 'No location yet';
 }

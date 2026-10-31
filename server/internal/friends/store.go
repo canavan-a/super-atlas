@@ -32,8 +32,11 @@ type FriendView struct {
 	// LastSeenAt is when the friend's location last updated; only set for
 	// accepted friends who aren't in ghost mode.
 	LastSeenAt *string `json:"lastSeenAt,omitempty"`
-	// SpeedMps (when their phone said) and HereSince (when they arrived
-	// near where they are) go with LastSeenAt.
+	// Latitude and Longitude (so the app can name the place), SpeedMps (when
+	// their phone said) and HereSince (when they arrived near where they
+	// are) go with LastSeenAt.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
 	SpeedMps  *float64 `json:"speedMps,omitempty"`
 	HereSince *string  `json:"hereSince,omitempty"`
 	// GhostMode: this friend hides from everyone (only said of accepted
@@ -108,7 +111,7 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT f.id, f.addressee_id, f.status, u.id, u.display_name, COALESCE(a.id, ''),
-		       COALESCE(us.sharing_paused, 0), l.recorded_at, l.speed_mps, l.here_since
+		       COALESCE(us.sharing_paused, 0), l.recorded_at, l.latitude, l.longitude, l.speed_mps, l.here_since
 		FROM friendships f
 		JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
 		LEFT JOIN user_settings us ON us.user_id = u.id
@@ -127,16 +130,19 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 		var addresseeID string
 		var ghost bool
 		var lastSeen, hereSince sql.NullString
-		var speed sql.NullFloat64
+		var lat, lng, speed sql.NullFloat64
 		var v FriendView
 		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &v.AvatarID,
-			&ghost, &lastSeen, &speed, &hereSince); err != nil {
+			&ghost, &lastSeen, &lat, &lng, &speed, &hereSince); err != nil {
 			return nil, err
 		}
 		v.IsIncomingRequest = v.Status == "pending" && addresseeID == userID
 		v.GhostMode = v.Status == "accepted" && ghost
 		if v.Status == "accepted" && !ghost && lastSeen.Valid {
 			v.LastSeenAt = &lastSeen.String
+			if lat.Valid && lng.Valid {
+				v.Latitude, v.Longitude = &lat.Float64, &lng.Float64
+			}
 			if speed.Valid {
 				v.SpeedMps = &speed.Float64
 			}

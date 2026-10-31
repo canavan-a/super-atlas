@@ -66,12 +66,13 @@ export default function MapScreen() {
     });
   };
 
-  // "Show me", the fit button's other half: back in on you at street level.
+  // "Show me", the fit button's other half: back in on you at town level, as
+  // close as tapping someone goes.
   const zoomToMe = () => {
     setFitted(false);
     setFollow(null);
     if (!me) return;
-    cameraRef.current?.flyTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM, ...NEUTRAL, duration: 800 });
+    cameraRef.current?.flyTo({ center: [me.longitude, me.latitude], zoom: TOWN_ZOOM, ...NEUTRAL, duration: 800 });
   };
 
   // Open close in on your own position, as soon as there is one and the map
@@ -216,6 +217,7 @@ export default function MapScreen() {
         onLocate={fitted ? zoomToMe : undefined}
         selected={selected}
         meSelected={meSelected}
+        me={me}
         now={now}
         noFriends={noFriends}
       />

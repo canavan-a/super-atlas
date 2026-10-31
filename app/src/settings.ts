@@ -5,9 +5,13 @@ import type { ThemeName } from './theme';
 const STORAGE_KEY = 'superatlas.settings.v1';
 
 // Device-local preferences, following super-badger's settings store. There's
-// deliberately very little here: the only user-facing choice is the theme.
+// deliberately very little here: the user-facing choices are the theme and
+// whether the phone looks up place names (placeName.ts).
 export interface Settings {
   themeName: ThemeName;
+  // Name where you and your friends are ("Starbucks") using the phone's
+  // geocoder, which may ask Google. Off until turned on in Settings.
+  placeNames: boolean;
   // Crash-loop protection for the launch splash: a launch counts as a strike
   // before the animation starts and is cleared when it finishes, so a launch
   // that dies mid-animation leaves one behind. After too many in a row the
@@ -20,6 +24,7 @@ export interface Settings {
 
 const DEFAULT_SETTINGS: Settings = {
   themeName: 'dark',
+  placeNames: false,
   launchSplash: true,
   splashStrikes: 0,
   splashAutoDisabled: false,

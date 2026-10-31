@@ -25,6 +25,7 @@ export function MapChrome({
   onLocate,
   selected,
   meSelected = false,
+  me,
   now,
   noFriends,
   notice,
@@ -37,6 +38,8 @@ export function MapChrome({
   selected: FriendLocation | null;
   /** You were tapped: show the "You" card (Android only; the web has no you). */
   meSelected?: boolean;
+  /** Your position, named on the "You" card. */
+  me?: { latitude: number; longitude: number } | null;
   now: number;
   noFriends: boolean;
   notice?: string;
@@ -49,6 +52,8 @@ export function MapChrome({
   // Where the tapped friend has stopped, by name; not looked up while they're
   // moving, since the card shows their speed then.
   const place = usePlaceName(selected && !isMoving(selected, now) ? selected : null);
+  // And where you are, for the "You" card.
+  const myPlace = usePlaceName(meSelected ? (me ?? null) : null);
 
   return (
     <>
@@ -92,6 +97,7 @@ export function MapChrome({
           <Avatar name={user.displayName} avatarId={user.avatarId} size={44} />
           <View style={styles.flex}>
             <Text style={styles.cardName}>You</Text>
+            {myPlace && <Text style={styles.cardMeta}>{myPlace}</Text>}
           </View>
           <Icon name="chevron" color={theme.textMuted} size={18} />
         </Pressable>

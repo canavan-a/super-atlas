@@ -12,6 +12,8 @@ export type Friend = {
   // Where they are, roughly: only for friends you can see (accepted, not in
   // ghost mode).
   lastSeenAt?: string;
+  latitude?: number;
+  longitude?: number;
   speedMps?: number;
   hereSince?: string;
   // They hide from everyone (only said of accepted friends).

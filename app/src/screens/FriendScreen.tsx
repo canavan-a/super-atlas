@@ -5,7 +5,8 @@ import { apiJson } from '../api/client';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { Button, Card } from '../components/ui';
-import { durationSince, friendStatus, isMoving, mph } from '../friends/status';
+import { FriendStatusText } from '../components/FriendStatusText';
+import { durationSince, isMoving, mph } from '../friends/status';
 import { useFriends } from '../friends/useFriends';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { timeAgo } from '../time';
@@ -76,7 +77,7 @@ export default function FriendScreen() {
       <View style={styles.top}>
         <Avatar name={friend.displayName} avatarId={friend.avatarId} size={88} />
         <Text style={styles.name}>{friend.displayName}</Text>
-        <Text style={styles.status}>{friendStatus(friend, now)}</Text>
+        <FriendStatusText friend={friend} now={now} style={styles.status} />
       </View>
 
       {where && (

@@ -17,6 +17,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
 import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Button, Card } from '../components/ui';
+import { placeNamesSupported, usePlaceNamesSetting } from '../location/placeName';
 import {
   backgroundNotificationsEnabled,
   hasBackgroundNotificationSwitch,
@@ -48,7 +49,7 @@ type UpdateState =
   | { kind: 'downloading'; release: Release; percent: number | null }
   | { kind: 'error'; message: string };
 
-// Deliberately short: theme, notifications (sideload), updates (sideload),
+// Deliberately short: theme, place names (Android), notifications (sideload), updates (sideload),
 // your profile photo, sign out, deleting the account, and the privacy policy.
 export default function SettingsScreen() {
   const styles = useThemedStyles(makeStyles);
@@ -60,6 +61,7 @@ export default function SettingsScreen() {
   const [update, setUpdate] = useState<UpdateState>({ kind: 'idle' });
   const theme = useTheme();
   const [bgNotify, setBgNotify] = useState(false);
+  const [placeNames, setPlaceNames] = usePlaceNamesSetting();
   const navigation = useNavigation<any>();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -201,6 +203,27 @@ export default function SettingsScreen() {
           </Pressable>
         ))}
       </View>
+
+      {placeNamesSupported && (
+        <>
+          <Text style={styles.section}>Place names</Text>
+          <Card style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.account}>Show place names</Text>
+              <Text style={styles.hint}>
+                Name where you and your friends are, like a street or business. Your phone looks each spot up, which
+                may send it to Google.
+              </Text>
+            </View>
+            <Switch
+              value={placeNames}
+              onValueChange={setPlaceNames}
+              trackColor={{ true: theme.primary, false: theme.border }}
+              thumbColor={theme.surfaceAlt}
+            />
+          </Card>
+        </>
+      )}
 
       {hasBackgroundNotificationSwitch && (
         <>

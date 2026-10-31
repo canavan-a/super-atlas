@@ -7,7 +7,7 @@ import { Avatar } from '../components/Avatar';
 import { BackgroundLocationBanner } from '../components/BackgroundLocationBanner';
 import { Icon } from '../components/Icon';
 import { Button, Card, TextField } from '../components/ui';
-import { friendStatus } from '../friends/status';
+import { FriendStatusText } from '../components/FriendStatusText';
 import { Friend, useFriends } from '../friends/useFriends';
 import { shareInvite } from '../friends/shareInvite';
 import { Theme, useTheme, useThemedStyles } from '../theme';
@@ -155,7 +155,7 @@ export default function FriendsScreen() {
             <Avatar name={item.displayName} avatarId={item.avatarId} size={40} />
             <View style={styles.flex}>
               <Text style={styles.rowTitle}>{item.displayName}</Text>
-              <Text style={styles.rowMeta}>{friendStatus(item, now)}</Text>
+              <FriendStatusText friend={item} now={now} style={styles.rowMeta} />
             </View>
             {item.lastSeenAt && (
               <Pressable
