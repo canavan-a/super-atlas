@@ -6,8 +6,8 @@ import { useLocationStream } from '../location/useLocationStream';
 // What both map screens (Android and web) show: friends' live positions,
 // filtered to current friends (the stream only ever adds people, so this
 // drops anyone just removed), your own position (Android only; null on the
-// web), the count of requests waiting on you, which
-// friend is tapped, a clock that ticks each minute so "last seen" and
+// web), the count of requests waiting on you, who is tapped (a friend's
+// userId, or 'me' for you), a clock that ticks each minute so "last seen" and
 // faded markers stay current, and focus: a friend the map was opened to show
 // ("Show on map" in the friends list), once they're on it. The screen
 // follows them and calls focusDone.
@@ -43,6 +43,7 @@ export function useMapData() {
     pendingCount: friends?.filter((f) => f.isIncomingRequest).length ?? 0,
     noFriends: friends !== null && friends.length === 0,
     selected: locations.find((l) => l.userId === selectedId) ?? null,
+    meSelected: selectedId === 'me' && me !== null,
     setSelectedId,
     focus: focusId ? (locations.find((l) => l.userId === focusId) ?? null) : null,
     focusDone: () => navigation.setParams({ focusId: undefined }),

@@ -3,7 +3,7 @@
 // super-chat. Keep it in step with what the server and app actually do, and
 // update UPDATED when it changes.
 
-export const UPDATED = '2026-10-28';
+export const UPDATED = '2026-10-31';
 export const CONTACT = 'aidan@lunargen.com';
 
 /** Inline **bold** is the only markup, in paragraphs and list items. */
@@ -67,7 +67,8 @@ export const POLICY: PolicySection[] = [
       {
         list: [
           "**Email provider.** Sign-in codes are sent through our email provider, which sees your email address and the code.",
-          '**Google Firebase Cloud Messaging (Google Play version only).** Friend notifications ("<name> wants to be friends") are delivered through Google, which sees the notification text and your device token. The version installed outside Google Play does not use Google services at all; it keeps its own connection to our server instead.',
+          '**Google Firebase Cloud Messaging (Google Play version only).** Friend notifications ("<name> wants to be friends") are delivered through Google, which sees the notification text and your device token. The version installed outside Google Play does not use Firebase; it keeps its own connection to our server instead.',
+          "**Your phone's place-name lookup (Android app).** When you tap a friend on the map, your phone looks up a name for where they are (such as a street or business) using Android's built-in geocoder. On phones with Google Play services, this sends that one position to Google, without your name, email or account. It happens on your phone, not our server, and phones without a geocoder simply skip it. The web version doesn't do this.",
           '**OpenFreeMap (map tiles).** The map pictures are loaded from tiles.openfreemap.org, which sees your IP address and which parts of the map you look at, but not your location or account.',
           '**GitHub (version installed outside Google Play only).** "Check for updates" downloads new versions from GitHub, which sees your IP address.',
           "**Google Play** handles downloads and updates of the Google Play version under Google's own privacy policy.",

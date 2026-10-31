@@ -12,6 +12,9 @@ import { useMapData } from './useMapData';
 const FIT_PADDING = { top: 140, right: 80, bottom: 160, left: 80 };
 // "Fit everyone" also turns the map back north-up and flat.
 const NEUTRAL = { bearing: 0, pitch: 0 };
+// Town level: tapping someone zooms in to at least this, and turns the map
+// north-up (see MapScreen.tsx).
+const TOWN_ZOOM = 13;
 
 // The browser's map, on maplibre-gl with the same basemaps, markers and
 // buttons as the Android map (MapScreen.tsx). It only ever shows friends:
@@ -22,6 +25,9 @@ export default function MapScreen() {
   const { locations, now, pendingCount, noFriends, selected, setSelectedId, focus, focusDone } = useMapData();
   const container = useRef<View>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  // The friend whose card is up, for the map's own handlers.
+  const shown = useRef(selected);
+  shown.current = selected;
   const markers = useRef(new Map<string, maplibregl.Marker>());
   const fittedOnce = useRef(false);
   const latest = useRef<FriendLocation[]>(locations);
@@ -48,7 +54,8 @@ export default function MapScreen() {
   };
 
   // Create the map once; tapping empty map closes the friend card, and it or
-  // moving the map yourself stops following.
+  // moving the map yourself stops following. A move that leaves the friend
+  // off screen closes their card too (a nudge doesn't).
   useEffect(() => {
     const el = container.current as unknown as HTMLElement | null;
     if (!el) return;
@@ -65,6 +72,10 @@ export default function MapScreen() {
     });
     m.on('movestart', (e) => {
       if (e.originalEvent) following.current = null;
+    });
+    m.on('moveend', (e) => {
+      const s = shown.current;
+      if (e.originalEvent && s && !m.getBounds().contains([s.longitude, s.latitude])) setSelectedId(null);
     });
     map.current = m;
     const owned = markers.current;
@@ -90,7 +101,12 @@ export default function MapScreen() {
     fittedOnce.current = true; // don't zoom out to everyone over it
     setSelectedId(focus.userId);
     following.current = focus.userId;
-    m.easeTo({ center: [focus.longitude, focus.latitude], duration: 600 });
+    m.easeTo({
+      center: [focus.longitude, focus.latitude],
+      zoom: Math.max(m.getZoom(), TOWN_ZOOM),
+      bearing: 0,
+      duration: 600,
+    });
     focusDone();
   }, [focus?.userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -104,15 +120,26 @@ export default function MapScreen() {
       seen.add(l.userId);
       let marker = markers.current.get(l.userId);
       if (!marker) {
-        const el = document.createElement('button');
-        el.type = 'button';
+        // The visible circle sits inside an invisible margin that also takes
+        // the tap, so a slightly-off one still lands.
+        const el = document.createElement('div');
+        el.style.padding = '10px';
+        el.style.cursor = 'pointer';
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        el.appendChild(dot);
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           const friend = latest.current.find((f) => f.userId === l.userId);
           if (!friend) return;
           setSelectedId(friend.userId);
           following.current = friend.userId;
-          m.easeTo({ center: [friend.longitude, friend.latitude], duration: 600 });
+          m.easeTo({
+            center: [friend.longitude, friend.latitude],
+            zoom: Math.max(m.getZoom(), TOWN_ZOOM),
+            bearing: 0,
+            duration: 600,
+          });
         });
         marker = new maplibregl.Marker({ element: el }).setLngLat([l.longitude, l.latitude]).addTo(m);
         markers.current.set(l.userId, marker);
@@ -137,7 +164,7 @@ export default function MapScreen() {
           else m.jumpTo({ center: to });
         }
       }
-      styleMarker(marker.getElement(), l, theme, isStale(l.recordedAt, now));
+      styleMarker(marker.getElement().firstElementChild as HTMLElement, l, theme, isStale(l.recordedAt, now));
     }
     for (const [id, marker] of markers.current) {
       if (!seen.has(id)) {
@@ -189,6 +216,7 @@ function styleMarker(el: HTMLElement, l: FriendLocation, theme: Theme, stale: bo
     font: '700 12px system-ui, sans-serif',
     cursor: 'pointer',
     padding: '0',
+    display: 'block',
   });
 }
 

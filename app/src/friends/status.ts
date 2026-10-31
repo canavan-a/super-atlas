@@ -34,10 +34,17 @@ export function durationSince(iso: string, now = Date.now()): string {
 /**
  * One line on where a friend is at: "Moving · 42 mph", "Here for 23 min",
  * "Here for 3 h · seen 2 h ago" when their phone hasn't checked in lately,
- * or just "Seen 5 min ago".
+ * or just "Seen 5 min ago". With a place name for where they've stopped
+ * (placeName.ts), that stands in for "Here for …": "Stirrup Drive area",
+ * "Starbucks · seen 2 h ago".
  */
-export function whereabouts(w: { recordedAt: string; speedMps?: number; hereSince?: string }, now = Date.now()): string {
+export function whereabouts(
+  w: { recordedAt: string; speedMps?: number; hereSince?: string },
+  now = Date.now(),
+  place?: string | null
+): string {
   if (isMoving(w, now)) return `Moving · ${mph(w.speedMps!)} mph`;
+  if (place) return isStale(w.recordedAt, now) ? `${place} · seen ${timeAgo(w.recordedAt, now)}` : place;
   if (w.hereSince) {
     const here = now - new Date(w.hereSince).getTime() < MINUTE ? 'Just got here' : `Here for ${durationSince(w.hereSince, now)}`;
     return isStale(w.recordedAt, now) ? `${here} · seen ${timeAgo(w.recordedAt, now)}` : here;

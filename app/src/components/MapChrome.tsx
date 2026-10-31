@@ -1,30 +1,42 @@
 import { useNavigation } from '@react-navigation/native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { whereabouts } from '../friends/status';
+import { useAuth } from '../auth/AuthContext';
+import { isMoving, whereabouts } from '../friends/status';
 import type { FriendLocation } from '../location/friendStream';
+import { usePlaceName } from '../location/placeName';
 import { Theme, useTheme, useThemedStyles } from '../theme';
+import { isStale } from '../time';
+import { Avatar } from './Avatar';
 import { BackgroundLocationBanner } from './BackgroundLocationBanner';
 import { Icon } from './Icon';
 
 // Everything drawn over the map, shared by the Android map (MapScreen.tsx)
 // and the web one (MapScreen.web.tsx): the Friends button with its badge for
-// requests waiting on you, the "fit everyone" button, the card for a tapped
-// friend (where they're at; tap it for their own screen), and the
-// empty-state nudge. `notice` is a fixed line at the top
-// (the web build's "view only"); without one, the top holds
-// BackgroundLocationBanner when it applies.
+// requests waiting on you, the "fit everyone" / "show me" button, the card
+// for a tapped friend (their picture and where they're at, by place name when
+// the phone can find one; tap it for their own screen) or for tapping
+// yourself ("You"; tap it for Settings), and the empty-state nudge. `notice`
+// is a fixed line at the top (the web build's "view only"); without one, the
+// top holds BackgroundLocationBanner when it applies.
 export function MapChrome({
   pendingCount,
   onFit,
+  onLocate,
   selected,
+  meSelected = false,
   now,
   noFriends,
   notice,
 }: {
   pendingCount: number;
   onFit: () => void;
+  /** Set right after "fit everyone": the button becomes "Show me" and calls
+   *  this instead, so it toggles between everyone and you (Android only). */
+  onLocate?: () => void;
   selected: FriendLocation | null;
+  /** You were tapped: show the "You" card (Android only; the web has no you). */
+  meSelected?: boolean;
   now: number;
   noFriends: boolean;
   notice?: string;
@@ -33,6 +45,10 @@ export function MapChrome({
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { user } = useAuth();
+  // Where the tapped friend has stopped, by name; not looked up while they're
+  // moving, since the card shows their speed then.
+  const place = usePlaceName(selected && !isMoving(selected, now) ? selected : null);
 
   return (
     <>
@@ -57,25 +73,50 @@ export function MapChrome({
             </View>
           )}
         </Pressable>
-        <Pressable style={[styles.fab, styles.fabGap]} onPress={onFit} accessibilityLabel="Show everyone">
-          <Icon name="fit" color={theme.text} size={22} />
-        </Pressable>
+        {onLocate ? (
+          <Pressable style={[styles.fab, styles.fabGap]} onPress={onLocate} accessibilityLabel="Show me">
+            <Icon name="locate" color={theme.text} size={22} />
+          </Pressable>
+        ) : (
+          <Pressable style={[styles.fab, styles.fabGap]} onPress={onFit} accessibilityLabel="Show everyone">
+            <Icon name="fit" color={theme.text} size={22} />
+          </Pressable>
+        )}
       </View>
+
+      {meSelected && user && (
+        <Pressable
+          style={[styles.card, styles.cardRow, { bottom: insets.bottom + 24 }]}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <Avatar name={user.displayName} avatarId={user.avatarId} size={44} />
+          <View style={styles.flex}>
+            <Text style={styles.cardName}>You</Text>
+          </View>
+          <Icon name="chevron" color={theme.textMuted} size={18} />
+        </Pressable>
+      )}
 
       {selected && (
         <Pressable
           style={[styles.card, styles.cardRow, { bottom: insets.bottom + 24 }]}
           onPress={() => navigation.navigate('Friend', { friendId: selected.userId })}
         >
+          <Avatar
+            name={selected.displayName}
+            avatarId={selected.avatarId}
+            size={44}
+            stale={isStale(selected.recordedAt, now)}
+          />
           <View style={styles.flex}>
             <Text style={styles.cardName}>{selected.displayName || 'Friend'}</Text>
-            <Text style={styles.cardMeta}>{whereabouts(selected, now)}</Text>
+            <Text style={styles.cardMeta}>{whereabouts(selected, now, place)}</Text>
           </View>
           <Icon name="chevron" color={theme.textMuted} size={18} />
         </Pressable>
       )}
 
-      {noFriends && !selected && (
+      {noFriends && !selected && !meSelected && (
         <Pressable style={[styles.card, { bottom: insets.bottom + 24 }]} onPress={() => navigation.navigate('Friends')}>
           <Text style={styles.cardName}>No friends yet</Text>
           <Text style={styles.cardMeta}>Tap to invite someone. You'll see each other here.</Text>

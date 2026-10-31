@@ -1,5 +1,5 @@
 import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
-import type { CameraRef, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
+import type { CameraRef, LngLatBounds, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
@@ -14,27 +14,38 @@ import { useMapData } from './useMapData';
 const FIT_PADDING = { top: 140, right: 80, bottom: 160, left: 80 };
 // Street level: how close the map opens on you.
 const CLOSE_ZOOM = 16;
+// Town level: tapping someone zooms in to at least this, never out.
+const TOWN_ZOOM = 13;
 // "Fit everyone" also turns the map back north-up and flat.
 const NEUTRAL = { bearing: 0, pitch: 0 };
 // Who the camera is following: you, a friend's userId, or no one.
 type Follow = 'me' | string | null;
 
 // The home screen: a full-screen map of you and your friends. Two buttons —
-// Friends (with a badge for requests waiting on you) and "fit everyone".
-// Tapping someone (you included) follows them at the current zoom until you
-// move the map yourself; tapping a friend also shows who it is and when they
-// were last seen. "Show on map" in the friends list opens the map following
-// that friend. Dots slide to new positions rather than jumping.
+// Friends (with a badge for requests waiting on you) and "fit everyone",
+// which turns into "show me" once it has zoomed out, to toggle back.
+// Tapping someone (you included) turns the map north-up and follows them,
+// zooming in to town level if the map is further out than that (and
+// otherwise keeping the zoom), until you move the map yourself, and shows a
+// card at the bottom: "You", or the friend's picture and when they were last
+// seen. Nudging the map keeps the card; moving them off screen closes it.
+// "Show on map" in the friends list opens the map following that friend. Dots
+// slide to new positions rather than jumping.
 // (MapScreen.web.tsx is the browser's version.)
 export default function MapScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const cameraRef = useRef<CameraRef>(null);
-  const { locations, me, now, pendingCount, noFriends, selected, setSelectedId, focus, focusDone } = useMapData();
+  const { locations, me, now, pendingCount, noFriends, selected, meSelected, setSelectedId, focus, focusDone } =
+    useMapData();
   const centeredOnce = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [follow, setFollow] = useState<Follow>(null);
+  // The map's zoom as of its last move.
+  const zoom = useRef(0);
+  // Just zoomed out to everyone: the fit button now says "Show me" instead.
+  const [fitted, setFitted] = useState(false);
 
   const fitEveryone = (animate = true) => {
     setFollow(null);
@@ -45,6 +56,7 @@ export default function MapScreen() {
       cameraRef.current?.flyTo({ center: points[0], zoom: CLOSE_ZOOM, ...NEUTRAL, duration: animate ? 800 : 0 });
       return;
     }
+    if (me) setFitted(true);
     const lngs = points.map((p) => p[0]);
     const lats = points.map((p) => p[1]);
     cameraRef.current?.fitBounds([Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)], {
@@ -52,6 +64,14 @@ export default function MapScreen() {
       ...NEUTRAL,
       duration: animate ? 800 : 0,
     });
+  };
+
+  // "Show me", the fit button's other half: back in on you at street level.
+  const zoomToMe = () => {
+    setFitted(false);
+    setFollow(null);
+    if (!me) return;
+    cameraRef.current?.flyTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM, ...NEUTRAL, duration: 800 });
   };
 
   // Open close in on your own position, as soon as there is one and the map
@@ -63,9 +83,9 @@ export default function MapScreen() {
     cameraRef.current?.jumpTo({ center: [me.longitude, me.latitude], zoom: CLOSE_ZOOM });
   }, [me, mapReady]);
 
-  // Keep the followed person centered, without touching the zoom: ease over
-  // to them when following starts, then slide along with their dot (same
-  // time and pace as useGlide) each time they move.
+  // Keep the followed person centered: ease over to them when following
+  // starts (north-up, and zoomed in to town level if further out), then slide
+  // along with their dot (same time and pace as useGlide) each time they move.
   const followed = follow === 'me' ? me : locations.find((l) => l.userId === follow);
   const followLng = followed?.longitude;
   const followLat = followed?.latitude;
@@ -79,7 +99,12 @@ export default function MapScreen() {
     const prev = lastFollow.current;
     lastFollow.current = { who: follow, at };
     if (prev?.who !== follow) {
-      cameraRef.current?.easeTo({ center: at, duration: 600 });
+      cameraRef.current?.easeTo({
+        center: at,
+        ...(zoom.current < TOWN_ZOOM && { zoom: TOWN_ZOOM }),
+        bearing: 0,
+        duration: 600,
+      });
     } else if (shouldGlide(prev.at, at)) {
       cameraRef.current?.easeTo({ center: at, duration: GLIDE_MS, easing: 'linear' });
     } else {
@@ -93,16 +118,19 @@ export default function MapScreen() {
     if (!focusUserId || !mapReady) return;
     setSelectedId(focusUserId);
     setFollow(focusUserId);
+    setFitted(false);
     focusDone();
   }, [focusUserId, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onFriendPress = (userId: string) => {
+    setFitted(false);
     setSelectedId(userId);
     setFollow(userId);
   };
 
   const onMePress = () => {
-    setSelectedId(null);
+    setFitted(false);
+    setSelectedId('me');
     setFollow('me');
   };
 
@@ -115,8 +143,23 @@ export default function MapScreen() {
   };
 
   // Dragging, pinching or rotating the map yourself stops following.
+  const movedByUser = useRef(false);
   const onRegionWillChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
-    if (e.nativeEvent.userInteraction) setFollow(null);
+    if (!e.nativeEvent.userInteraction) return;
+    movedByUser.current = true;
+    setFollow(null);
+  };
+
+  // A nudge keeps the card up; moving the map so far that whoever it's for
+  // is off screen closes it.
+  const shownPerson = meSelected ? me : selected;
+  const onRegionDidChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+    zoom.current = e.nativeEvent.zoom;
+    if (!movedByUser.current) return;
+    movedByUser.current = false;
+    if (shownPerson && !inBounds(e.nativeEvent.bounds, shownPerson.longitude, shownPerson.latitude)) {
+      setSelectedId(null);
+    }
   };
 
   return (
@@ -129,6 +172,7 @@ export default function MapScreen() {
         attributionPosition={{ bottom: 8, left: 8 }}
         onPress={onMapPress}
         onRegionWillChange={onRegionWillChange}
+        onRegionDidChange={onRegionDidChange}
         onDidFinishLoadingMap={() => setMapReady(true)}
       >
         <Camera ref={cameraRef} />
@@ -169,7 +213,9 @@ export default function MapScreen() {
       <MapChrome
         pendingCount={pendingCount}
         onFit={() => fitEveryone()}
+        onLocate={fitted ? zoomToMe : undefined}
         selected={selected}
+        meSelected={meSelected}
         now={now}
         noFriends={noFriends}
       />
@@ -177,7 +223,15 @@ export default function MapScreen() {
   );
 }
 
-// A map marker that slides to each new position instead of jumping (glide.ts).
+// Whether a point is inside the map's visible [west, south, east, north],
+// including a view that spans the antimeridian (west > east).
+function inBounds([west, south, east, north]: LngLatBounds, lng: number, lat: number) {
+  if (lat < south || lat > north) return false;
+  return west <= east ? lng >= west && lng <= east : lng >= west || lng <= east;
+}
+
+// A map marker that slides to each new position instead of jumping (glide.ts),
+// with an invisible margin around it so a slightly-off tap still lands.
 function GlidingMarker({
   id,
   lngLat,
@@ -192,10 +246,13 @@ function GlidingMarker({
   const shown = useGlide(lngLat);
   return (
     <Marker id={id} lngLat={shown} onPress={onPress}>
-      {children}
+      <View style={hitArea}>{children}</View>
     </Marker>
   );
 }
+
+// How far past a marker's edge a tap still counts as on it.
+const hitArea = { padding: 10 };
 
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({

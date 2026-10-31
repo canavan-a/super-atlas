@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Focus,
   Ghost,
+  LocateFixed,
   LucideIcon,
   Mail,
   MapPin,
@@ -20,6 +21,7 @@ export type IconName =
   | 'friends'
   | 'gear'
   | 'fit'
+  | 'locate'
   | 'back'
   | 'chevron'
   | 'close'
@@ -34,6 +36,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   friends: Users,
   gear: Settings,
   fit: Focus,
+  locate: LocateFixed,
   back: ChevronLeft,
   chevron: ChevronRight,
   close: X,
