@@ -18,6 +18,8 @@
 //	                              theme, and the notification icon
 //	app/public                    the web build's favicon and icons (dark
 //	                              theme, the app's default)
+//	app/ios/SuperAtlasApp/Images.xcassets/AppIcon.appiconset
+//	                              the iOS app icon (dark theme)
 //
 // Theme colors are read from app/src/theme.tsx, never copied.
 package main
@@ -229,6 +231,7 @@ func main() {
 	must(writePalette(filepath.Join(*app, "src/logo/iconPalette.json"), pals, s.icon))
 	must(writeAndroid(filepath.Join(*app, "android/app/src/main/res"), pals, s.launcher, s.icon))
 	must(writeWebIcons(filepath.Join(*app, "public"), pals["dark"], s.launcher))
+	must(writeIOSIcon(filepath.Join(*app, "ios/SuperAtlasApp/Images.xcassets/AppIcon.appiconset"), pals["dark"], s.launcher))
 	if *preview != "" {
 		must(writePreviews(*preview, pals, s))
 	}

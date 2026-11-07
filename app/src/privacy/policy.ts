@@ -3,7 +3,7 @@
 // super-chat. Keep it in step with what the server and app actually do, and
 // update UPDATED when it changes.
 
-export const UPDATED = '2026-10-31';
+export const UPDATED = '2026-11-03';
 export const CONTACT = 'aidan@lunargen.com';
 
 /** Inline **bold** is the only markup, in paragraphs and list items. */
@@ -34,10 +34,10 @@ export const POLICY: PolicySection[] = [
           '**Email address.** Used to sign you in with a one-time code and for friends to find you. We never send you anything else.',
           '**Display name.** The name you choose when you sign up, shown to your friends and to anyone you send a friend request or invite link.',
           "**Profile photo (optional).** If you add one in Settings, we keep a small square copy (256 × 256), re-made on our server so it carries none of the original photo's details, such as where it was taken. Your friends and anyone you have a friend request with see it; without one, they see your initials. Removing it in Settings deletes it.",
-          '**Location.** Your device sends its position while the app is open. If you allow "Allow all the time", it also sends it every few seconds while you\'re moving (Android shows a notification while it does) and every 15 minutes or so otherwise. If you allow physical activity, the phone\'s motion sensors are used to notice when a drive or bike ride starts; that stays on the device and is never sent to the server. The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
+          '**Location.** Your device sends its position while the app is open. If you allow location "all the time" (Android) or "Always" (iPhone), it also sends it every few seconds while you\'re moving (Android shows a notification while it does, and iPhone shows its blue location indicator) and every 15 minutes or so otherwise. If you allow physical activity (Android) or Motion & Fitness (iPhone), the phone\'s motion sensors are used to notice when a drive or bike ride starts (Android) or when you have stopped moving (iPhone); that stays on the device and is never sent to the server. If you turn off Precise Location on an iPhone, only an approximate position is sent. The server keeps **only your most recent position** (and how accurate it was), replacing it with each update. There is no location history.',
           "**Friends.** Who you're friends with and any pending friend requests, plus your personal invite link, which you can reset at any time.",
           '**Sign-in sessions.** One per signed-in device, stored only as a scrambled (hashed) token.',
-          '**Notification token (Google Play version only).** A device token from Google, so we can tell you about friend requests while the app is closed.',
+          '**Notification token (Google Play and iPhone versions only).** A device token from Google, so we can tell you about friend requests while the app is closed.',
         ],
       },
       {
@@ -67,11 +67,11 @@ export const POLICY: PolicySection[] = [
       {
         list: [
           "**Email provider.** Sign-in codes are sent through our email provider, which sees your email address and the code.",
-          '**Google Firebase Cloud Messaging (Google Play version only).** Friend notifications ("<name> wants to be friends") are delivered through Google, which sees the notification text and your device token. The version installed outside Google Play does not use Firebase; it keeps its own connection to our server instead.',
-          "**Your phone's place-name lookup (Android app, off unless you turn on \"Show place names\" in Settings).** To show where you and your friends are by name (such as a street or business) on the map and in your friends list, your phone looks up those positions using Android's built-in geocoder. On phones with Google Play services, this sends each position to Google, without your name, email or account. It happens on your phone, not our server, and phones without a geocoder simply skip it. The web version doesn't do this.",
+          '**Google Firebase Cloud Messaging (Google Play and iPhone versions only).** Friend notifications ("<name> wants to be friends") are delivered through Google (and, on an iPhone, then through Apple\'s push notification service), which sees the notification text and your device token. The Android version installed outside Google Play does not use Firebase; it keeps its own connection to our server instead.',
+          "**Your phone's place-name lookup (Android and iPhone apps, off unless you turn on \"Show place names\" in Settings).** To show where you and your friends are by name (such as a street or business) on the map and in your friends list, your phone looks up those positions using its built-in geocoder. On Android phones with Google Play services this sends each position to Google, and on an iPhone to Apple, without your name, email or account. It happens on your phone, not our server, and phones without a geocoder simply skip it. The web version doesn't do this.",
           '**OpenFreeMap (map tiles).** The map pictures are loaded from tiles.openfreemap.org, which sees your IP address and which parts of the map you look at, but not your location or account.',
           '**GitHub (version installed outside Google Play only).** "Check for updates" downloads new versions from GitHub, which sees your IP address.',
-          "**Google Play** handles downloads and updates of the Google Play version under Google's own privacy policy.",
+          "**Google Play** handles downloads and updates of the Google Play version under Google's own privacy policy, and the **App Store** does the same for the iPhone version under Apple's.",
         ],
       },
     ],

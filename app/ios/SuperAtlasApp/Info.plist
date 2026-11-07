@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<!-- expo-background-task's one task (src/location/backgroundTask.ts):
+		     the fallback fix every so often, on iOS's own schedule. -->
+		<string>com.expo.modules.backgroundtask.processing</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Super Atlas</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.superatlasapp</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>superatlas</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Purpose strings. App Review (5.1.1) wants each one to say what's
+	     used, what for, and who sees it; keep them in step with
+	     PermissionsGateScreen.tsx and the privacy policy (src/privacy/policy.ts). -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Super Atlas shares your location with the friends you've accepted, so they can see you on the map. Nobody else can see it, and you can hide at any time with ghost mode.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Super Atlas shares your location with the friends you've accepted, including while the app is closed, so they still see where you are when you're on the move. It stops while you're staying put, and you can hide at any time with ghost mode.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Super Atlas uses motion on your phone to tell when you've stopped moving, so it can pause location updates and save battery. Motion data never leaves your phone.</string>
+	<!-- expo-image-picker links camera and video code, so iOS needs these
+	     strings, but the profile photo only ever comes from the photo picker. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo from your library to use as your profile picture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Super Atlas never turns on your camera: profile pictures are chosen from your photo library. The photo library includes camera support, which is why iOS asks for this text.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Super Atlas never uses your microphone. The photo picker it uses includes video support, which is why iOS asks for this text.</string>
+	<!-- The server this build talks to (SUPERATLAS_API_URL in the project's
+	     build settings; .github/workflows/ios.yml sets it from release/app.env).
+	     DistributionModule.m and MotionTracker.m read it. -->
+	<key>SuperAtlasApiUrl</key>
+	<string>$(SUPERATLAS_API_URL)</string>
+	<!-- Only the modes the app uses (App Review 2.5.4):
+	       location    MotionTracker.m: sharing while you're on the move,
+	                   with the app in the background.
+	       processing  expo-background-task's fallback fix (above).
+	     No remote-notification: friend notifications are plain alerts, shown
+	     by iOS itself. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>processing</string>
+	</array>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDefault</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Automatic</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+</dict>
+</plist>

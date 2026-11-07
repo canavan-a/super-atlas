@@ -60,7 +60,7 @@ export default function RootNavigator() {
     );
   }
 
-  if (!permissions.foregroundLocationGranted) {
+  if (permissions.showGate) {
     return (
       <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
         <Stack.Screen name="Permissions">{() => <PermissionsGateScreen permissions={permissions} />}</Stack.Screen>

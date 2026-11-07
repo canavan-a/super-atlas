@@ -20,12 +20,12 @@
 - [x] `/me` on launch.
 - [x] Notifications on friend requests (sideload: background connection; Play: FCM).
 - [ ] Loading/error states polish (friends list, map) and pull-to-refresh.
-- [ ] iOS: not set up at all (no `ios/` project).
-- [ ] iOS motion-triggered sharing: a Swift native module named `Motion` with the same `enable(token)`/`disable()` as Android's `MotionTracker.kt`, so `app/src/location/motion.ts` works unchanged. iOS can't let CoreMotion wake the app, so the wake-ups come from Core Location instead:
-  - Still: a `CLCircularRegion` (~150 m) where you stopped, plus significant-location-change monitoring; both relaunch a closed app.
-  - Woken: start `CLLocationManager` updates (`allowsBackgroundLocationUpdates`, `UIBackgroundModes: location`), send a fix every few seconds to `/locations/batch`.
-  - Stop: `CMMotionActivityManager` reporting `stationary` (or the same 75 m / 5 min rule as Android), then a new region and stop updates.
-  - Permissions: "Always" location, then Motion & Fitness (`NSMotionUsageDescription`), asked from `requestActivityPermission()` in `motion.ts` (its iOS branch is a stub).
+- [x] iOS project (`app/ios/`, Expo 57's bare template, edited by hand like android/), with `MotionTracker.m` (region + significant-change wake-ups, background updates while moving, Motion & Fitness for the stop), FCM push (`PushModule.m`), Universal Links, the privacy manifest, and the App Store workflow (`.github/workflows/ios.yml`). See release/README.md, "iOS".
+- [ ] iOS first build: nothing has been compiled yet (written on Linux). Run `pod install` and build on a Mac (or push an `ios-v*` tag) and fix what breaks; `pod install` will add its build phases to project.pbxproj, so commit that.
+- [ ] iOS Apple setup: App ID, "Super Atlas iOS App Store" profile, App Store Connect app, repo secrets, `appleAppIds` on the server (release/README.md).
+- [ ] iOS notifications: a Firebase iOS app, its APNs key, and `app/ios/SuperAtlasApp/GoogleService-Info.plist`.
+- [ ] iOS device testing: a trip started from a region exit with the app closed, the stop (5 min still, 2 with Motion & Fitness), Precise Location off, "While Using" only, a reboot.
+- [ ] iOS: the invite landing page (`/i/…` in a browser) only offers the Android APK; add an App Store link once there is one.
 
 ## Server (`server/`)
 - [x] Invite-only sign-in: an email allowlist managed with `superatlas-admin`.

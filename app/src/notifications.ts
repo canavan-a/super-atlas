@@ -4,6 +4,8 @@
 //            server (NotifyService.kt), switched from Settings.
 //  play      Firebase Cloud Messaging: this device's token is registered
 //            with the server after sign-in (PushModule.kt).
+//  appstore  the same, with FCM delivering through APNs (PushModule.m,
+//            which also asks iOS for permission to notify).
 //  web       none.
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 
@@ -57,7 +59,7 @@ export async function setBackgroundNotifications(on: boolean): Promise<boolean> 
  * background notifications are on, reconnect them as the current session.
  */
 export async function startNotifications(): Promise<void> {
-  if (distribution === 'play' && Push) {
+  if ((distribution === 'play' || distribution === 'appstore') && Push) {
     if (!(await Push.isAvailable().catch(() => false))) return;
     if (!(await allowNotifications())) return;
     const token = await Push.getToken();

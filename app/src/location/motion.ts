@@ -10,14 +10,18 @@ import { getToken } from '../api/client';
 //           Recognition (car, bike) for a quicker start, wake a location
 //           foreground service that sends a fix every few seconds until
 //           you've been still for 5 minutes.
-//  iOS      not built yet (no ios/ project; see TODO.md): region monitoring
-//           and significant-change monitoring wake the app, CoreMotion's
-//           CMMotionActivityManager confirms the trip and the stop, with
-//           the same enable/disable methods.
+//  iOS      MotionTracker.m: a region where you stopped, plus
+//           significant-change monitoring, wake (or relaunch) the app,
+//           which sends a fix every few seconds until you've been still for
+//           5 minutes (2 once Motion & Fitness says stationary too). iOS
+//           never lets motion itself wake an app, so there's no quicker
+//           start for driving.
 // The web build never shares a location and doesn't import this.
 interface MotionNative {
   enable(token: string): Promise<void>;
   disable(): Promise<void>;
+  /** iOS only: asks for Motion & Fitness, resolves whether it's granted. */
+  requestActivity?(): Promise<boolean>;
 }
 
 const Motion = NativeModules.Motion as MotionNative | undefined;
@@ -35,10 +39,11 @@ export async function stopMotionTracking() {
 const ACTIVITY_ASKED_KEY = 'superatlas.activityAsked.v1';
 
 /**
- * Asks for the permission that lets a trip start tracking within a minute
- * ("Physical activity" on Android, "Motion & Fitness" on iOS). Optional:
- * without it the geofence still starts tracking, just a couple of minutes
- * later. Returns whether it's granted.
+ * Asks for the motion permission: "Physical activity" on Android, which
+ * lets a trip start tracking within a minute, and "Motion & Fitness" on iOS,
+ * which lets tracking stop sooner once you've stopped. Optional: without it
+ * the geofence still starts tracking, just a couple of minutes later, and
+ * tracking stops after 5 still minutes. Returns whether it's granted.
  */
 export async function requestActivityPermission(): Promise<boolean> {
   let granted = false;
@@ -48,6 +53,8 @@ export async function requestActivityPermission(): Promise<boolean> {
       Platform.Version < 29 ||
       (await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION)) ===
         PermissionsAndroid.RESULTS.GRANTED;
+  } else if (Platform.OS === 'ios') {
+    granted = (await Motion?.requestActivity?.().catch(() => false)) ?? false;
   }
   await AsyncStorage.setItem(ACTIVITY_ASKED_KEY, '1').catch(() => {});
   // Re-arm, so the native side starts listening for trips.

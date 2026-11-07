@@ -1,0 +1,65 @@
+# Expo 57's bare Podfile (node_modules/expo/template.tgz), with the app's
+# own pods added. Not generated: edit it by hand, like android/ (AGENTS.md).
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
+
+require 'json'
+podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
+
+ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] ||= podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
+ENV['RCT_USE_RN_DEP'] ||= podfile_properties['ios.buildReactNativeFromSource'] == 'true' ? '0' : '1'
+ENV['RCT_USE_PREBUILT_RNCORE'] ||= podfile_properties['ios.buildReactNativeFromSource'] == 'true' ? '0' : '1'
+ENV['EXPO_USE_PRECOMPILED_MODULES'] = '0' if podfile_properties['EXPO_USE_PRECOMPILED_MODULES'] == 'false'
+ENV['EXPO_USE_PRECOMPILED_MODULES'] ||= '1'
+platform :ios, podfile_properties['ios.deploymentTarget'] || '16.4'
+
+prepare_react_native_project!
+
+target 'SuperAtlasApp' do
+  use_expo_modules!
+
+  config = use_native_modules!([
+    'node',
+    '--no-warnings',
+    '--eval',
+    'require(\'expo/bin/autolinking\')',
+    'expo-modules-autolinking',
+    'react-native-config',
+    '--json',
+    '--platform',
+    'ios'
+  ])
+
+  use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    :hermes_enabled => true,
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/..",
+    :privacy_file_aggregation_enabled => true,
+  )
+
+  # Firebase Cloud Messaging, for friend notifications (SuperAtlasApp/
+  # PushModule.m), as in the Google Play build and super-chat's iOS app:
+  # the server sends to an FCM token, which FCM delivers through APNs.
+  # Firebase's Swift pods need modular headers from the pods they use,
+  # since the app links pods statically rather than as frameworks.
+  pod 'FirebaseCore', '~> 11.0', :modular_headers => true
+  pod 'FirebaseCoreInternal', '~> 11.0', :modular_headers => true
+  pod 'FirebaseMessaging', '~> 11.0', :modular_headers => true
+  pod 'GoogleUtilities', :modular_headers => true
+
+  post_install do |installer|
+    # MapLibre's native SDK, which comes from Swift Package Manager: this adds
+    # the package to its pod and to the app (what its Expo config plugin
+    # would write here; see MapLibreReactNative.podspec).
+    $MLRN.post_install(installer)
+
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+    )
+  end
+end

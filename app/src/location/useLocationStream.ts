@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { FriendLocation, useFriendStream } from './friendStream';
+import { usePermissions } from './permissionsContext';
 
 export type { FriendLocation };
 
@@ -13,6 +14,8 @@ export type MyPosition = { latitude: number; longitude: number; accuracyM: numbe
 export function useLocationStream(): { locations: FriendLocation[]; me: MyPosition | null } {
   const { locations, socket } = useFriendStream();
   const [me, setMe] = useState<MyPosition | null>(null);
+  // Re-run once location is allowed (from Settings, say).
+  const granted = usePermissions()?.foregroundLocationGranted ?? true;
 
   useEffect(() => {
     let stopped = false;
@@ -24,6 +27,10 @@ export function useLocationStream(): { locations: FriendLocation[]; me: MyPositi
         accuracyM: position.coords.accuracy,
       });
     (async () => {
+      // Location can be off on iOS (usePermissionsGate lets you in after
+      // saying no): then this only receives friends.
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== Location.PermissionStatus.GRANTED || stopped) return;
       // The OS's cached fix, so the dot shows straight away instead of after
       // the first fresh one.
       const last = await Location.getLastKnownPositionAsync().catch(() => null);
@@ -54,7 +61,7 @@ export function useLocationStream(): { locations: FriendLocation[]; me: MyPositi
       stopped = true;
       watcher?.remove();
     };
-  }, [socket]);
+  }, [socket, granted]);
 
   return { locations, me };
 }

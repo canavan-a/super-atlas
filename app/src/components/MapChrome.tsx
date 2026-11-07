@@ -18,7 +18,11 @@ import { Icon } from './Icon';
 // the phone can find one; tap it for their own screen) or for tapping
 // yourself ("You"; tap it for Settings), and the empty-state nudge. `notice`
 // is a fixed line at the top (the web build's "view only"); without one, the
-// top holds BackgroundLocationBanner when it applies.
+// top holds BackgroundLocationBanner when it applies. `group` is a tapped group
+// marker whose people are too close together to zoom apart (map/cluster.ts):
+// a card listing them, each tappable as if their own marker had been.
+export type GroupPerson = { id: string; name: string; avatarId?: string; stale: boolean; isMe: boolean };
+
 export function MapChrome({
   pendingCount,
   onFit,
@@ -29,6 +33,8 @@ export function MapChrome({
   now,
   noFriends,
   notice,
+  group,
+  onPick,
 }: {
   pendingCount: number;
   onFit: () => void;
@@ -43,6 +49,9 @@ export function MapChrome({
   now: number;
   noFriends: boolean;
   notice?: string;
+  group?: GroupPerson[] | null;
+  /** Someone in `group` was tapped: their id ('me' for you). */
+  onPick?: (id: string) => void;
 }) {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -123,7 +132,20 @@ export function MapChrome({
         </Pressable>
       )}
 
-      {noFriends && !selected && !meSelected && (
+      {group && group.length > 1 && !selected && !meSelected && (
+        <View style={[styles.card, { bottom: insets.bottom + 24 }]}>
+          <Text style={styles.cardName}>{group.length} people here</Text>
+          {group.map((p) => (
+            <Pressable key={p.id} style={[styles.cardRow, styles.groupRow]} onPress={() => onPick?.(p.id)}>
+              <Avatar name={p.name} avatarId={p.avatarId} size={36} stale={p.stale} />
+              <Text style={[styles.flex, styles.groupName]}>{p.isMe ? 'You' : p.name || 'Friend'}</Text>
+              <Icon name="chevron" color={theme.textMuted} size={18} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {noFriends && !selected && !meSelected && !(group && group.length > 1) && (
         <Pressable style={[styles.card, { bottom: insets.bottom + 24 }]} onPress={() => navigation.navigate('Friends')}>
           <Text style={styles.cardName}>No friends yet</Text>
           <Text style={styles.cardMeta}>Tap to invite someone. You'll see each other here.</Text>
@@ -192,4 +214,6 @@ const makeStyles = (theme: Theme) =>
     flex: { flex: 1 },
     cardName: { color: theme.text, fontSize: 17, fontWeight: '600' },
     cardMeta: { color: theme.textMuted, marginTop: 4 },
+    groupRow: { marginTop: 12 },
+    groupName: { color: theme.text, fontSize: 16 },
   });

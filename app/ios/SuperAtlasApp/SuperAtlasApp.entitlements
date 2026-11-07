@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Invite links (https://<server>/i/…) open in the app: the server serves
+     the matching /.well-known/apple-app-site-association (appleAppIds in
+     module.nix). SUPERATLAS_API_HOST is a build setting, the host of
+     SUPERATLAS_API_URL. aps-environment matches the App Store provisioning
+     profile (friend notifications go through FCM to APNs). Both must stay
+     enabled on the App ID. -->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>production</string>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:$(SUPERATLAS_API_HOST)</string>
+	</array>
+</dict>
+</plist>

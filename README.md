@@ -16,18 +16,21 @@ screen and sideloaded Android APK) and runs on your own server.
 - **Live, then periodic.** While the app is open your position streams to
   friends; while it's closed Android uploads one about every 15 minutes.
   Positions older than an hour are drawn faded.
-- **Three builds of one app:**
+- **Four builds of one app:**
   - **Android, sideloaded** (GitHub Releases): updates itself from Settings,
     and can keep a connection open for friend-request notifications.
   - **Android, Google Play**: notifications through Firebase.
+  - **iOS** (App Store / TestFlight, built by `.github/workflows/ios.yml` on an
+    `ios-vX.Y.Z` tag): notifications through Firebase, sharing on the move.
   - **Web**: view only. It shows your friends but never asks for or shares
     your location, and says so on the map.
 
 ## Layout
 
 ```
-app/        React Native app: Android (committed android/, two Gradle flavors)
-            and a Vite/react-native-web build from the same code
+app/        React Native app: Android (committed android/, two Gradle flavors),
+            iOS (committed ios/) and a Vite/react-native-web build from the
+            same code
 server/     Go + SQLite server: email-code sign-in, friends, live locations,
             notifications (WebSocket + FCM), serves the web build
 tools/      appart: generates the logo data and launcher icons from art/

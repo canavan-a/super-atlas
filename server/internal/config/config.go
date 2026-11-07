@@ -25,6 +25,9 @@ type Config struct {
 	// AndroidCertSHA256 lists the release signing cert fingerprints served in
 	// /.well-known/assetlinks.json so invite links open the app directly.
 	AndroidCertSHA256 []string
+	// AppleAppIDs lists the iOS app IDs (Team ID, a dot, the bundle ID)
+	// served in /.well-known/apple-app-site-association, the same for iOS.
+	AppleAppIDs []string
 	// TrustProxy believes X-Forwarded-For on loopback connections (a local
 	// tunnel or reverse proxy) for rate-limit keys.
 	TrustProxy bool
@@ -58,6 +61,7 @@ func Load() *Config {
 		SMTPAppPassword:    os.Getenv("SUPERATLAS_SMTP_APP_PASSWORD"),
 		PublicOrigin:       strings.TrimRight(os.Getenv("SUPERATLAS_PUBLIC_ORIGIN"), "/"),
 		AndroidCertSHA256:  splitList(os.Getenv("SUPERATLAS_ANDROID_CERT_SHA256")),
+		AppleAppIDs:        splitList(os.Getenv("SUPERATLAS_APPLE_APP_IDS")),
 		TrustProxy:         os.Getenv("SUPERATLAS_TRUST_PROXY") == "1",
 		FCMCredentialsFile: os.Getenv("SUPERATLAS_FCM_CREDENTIALS_FILE"),
 		WebDir:             os.Getenv("SUPERATLAS_WEB_DIR"),

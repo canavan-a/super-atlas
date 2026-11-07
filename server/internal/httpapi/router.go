@@ -59,6 +59,7 @@ func NewRouter(d Deps) http.Handler {
 	})
 	r.With(limit(60, time.Minute)).Get("/i/{code}", landing(d.FriendService, d.Config.WebDir != ""))
 	r.Get("/.well-known/assetlinks.json", assetLinks(d.Config.AndroidCertSHA256))
+	r.Get("/.well-known/apple-app-site-association", appleAppSiteAssociation(d.Config.AppleAppIDs))
 
 	r.Route("/auth", func(r chi.Router) {
 		r.With(limit(10, 10*time.Minute)).Post("/code", d.AuthHandlers.Code)

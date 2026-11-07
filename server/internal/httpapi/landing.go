@@ -102,3 +102,24 @@ func assetLinks(certSHA256 []string) http.HandlerFunc {
 		}})
 	}
 }
+
+// appleAppSiteAssociation is iOS's assetlinks.json: Apple's CDN fetches it
+// when the app is installed, and invite links (/i/…) then open in the app.
+// 404 while no app IDs are set, so iOS doesn't cache an empty list.
+func appleAppSiteAssociation(appIDs []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if len(appIDs) == 0 {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"applinks": map[string]any{
+				"details": []map[string]any{{
+					"appIDs":     appIDs,
+					"components": []map[string]string{{"/": "/i/*"}},
+				}},
+			},
+		})
+	}
+}

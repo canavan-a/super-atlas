@@ -69,6 +69,11 @@ func (f *FCM) Send(ctx context.Context, token, title, body string) error {
 					"icon":       "ic_notification",
 				},
 			},
+			// The iOS app: FCM hands it to APNs, which is silent without a
+			// sound.
+			"apns": map[string]any{
+				"payload": map[string]any{"aps": map[string]any{"sound": "default"}},
+			},
 		},
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, f.endpoint, bytes.NewReader(payload))

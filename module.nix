@@ -65,6 +65,17 @@ in
       '';
     };
 
+    appleAppIds = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "4W9H62B6C2.com.superatlasapp" ];
+      description = ''
+        iOS app IDs (Team ID, a dot, then the bundle ID), served in
+        /.well-known/apple-app-site-association so invite links open straight
+        in the iOS app.
+      '';
+    };
+
     trustProxy = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -198,6 +209,7 @@ in
         SUPERATLAS_DATA_DIR = cfg.dataDir;
         SUPERATLAS_PUBLIC_ORIGIN = cfg.publicOrigin;
         SUPERATLAS_ANDROID_CERT_SHA256 = lib.concatStringsSep "," cfg.androidCertSha256;
+        SUPERATLAS_APPLE_APP_IDS = lib.concatStringsSep "," cfg.appleAppIds;
         SUPERATLAS_TRUST_PROXY = if cfg.trustProxy then "1" else "0";
       } // lib.optionalAttrs (cfg.reviewAccount.email != "" && cfg.reviewAccount.code != "") {
         SUPERATLAS_REVIEW_EMAIL = cfg.reviewAccount.email;

@@ -1,12 +1,13 @@
 import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
 import type { CameraRef, ViewStateChangeEvent } from '@maplibre/maplibre-react-native';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { NativeSyntheticEvent } from 'react-native';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components/Avatar';
-import { MapChrome } from '../components/MapChrome';
+import { MapChrome, type GroupPerson } from '../components/MapChrome';
 import { inMiddle } from '../map/bounds';
+import { clusterPoints, MAX_SPLIT_ZOOM, type Cluster } from '../map/cluster';
 import { GLIDE_MS, shouldGlide, useGlide, type LngLat } from '../map/glide';
 import { Theme, useTheme, useThemedStyles } from '../theme';
 import { isStale } from '../time';
@@ -32,7 +33,10 @@ type Follow = 'me' | string | null;
 // seen. Nudging the map keeps the card; dragging them toward the edge of the
 // screen (or off it) closes it.
 // "Show on map" in the friends list opens the map following that friend. Dots
-// slide to new positions rather than jumping.
+// slide to new positions rather than jumping. People whose markers would
+// overlap share one group marker (map/cluster.ts): their faces side by side,
+// "+N" past three. Tapping it zooms in until they come apart, or, if they're
+// too close for that, lists them in a card.
 // (MapScreen.web.tsx is the browser's version.)
 export default function MapScreen() {
   const theme = useTheme();
@@ -44,13 +48,51 @@ export default function MapScreen() {
   const centeredOnce = useRef(false);
   const [mapReady, setMapReady] = useState(false);
   const [follow, setFollow] = useState<Follow>(null);
-  // The map's zoom as of its last move.
+  // The map's zoom as of its last move, and the same for drawing groups.
   const zoom = useRef(0);
+  const [zoomLevel, setZoomLevel] = useState(0);
   // Just zoomed out to everyone: the fit button now says "Show me" instead.
   const [fitted, setFitted] = useState(false);
+  // A tapped group too close together to zoom apart: who's in it.
+  const [groupIds, setGroupIds] = useState<string[] | null>(null);
+
+  // Everyone on the map, you first, grouped where their markers would overlap.
+  const people = useMemo<MapPerson[]>(() => {
+    const list: MapPerson[] = locations.map((l) => ({
+      id: l.userId,
+      name: l.displayName,
+      avatarId: l.avatarId,
+      stale: isStale(l.recordedAt, now),
+      isMe: false,
+      lngLat: [l.longitude, l.latitude],
+    }));
+    if (me) {
+      list.unshift({
+        id: 'me',
+        name: user?.displayName ?? '',
+        avatarId: user?.avatarId,
+        stale: false,
+        isMe: true,
+        lngLat: [me.longitude, me.latitude],
+      });
+    }
+    return list;
+  }, [locations, me, user, now]);
+  const clusters = useMemo(
+    () =>
+      clusterPoints(
+        people,
+        (p) => p.lngLat,
+        (p) => p.id,
+        zoomLevel
+      ),
+    [people, zoomLevel]
+  );
+  const group = groupIds ? people.filter((p) => groupIds.includes(p.id)) : null;
 
   const fitEveryone = (animate = true) => {
     setFollow(null);
+    setGroupIds(null);
     const points: [number, number][] = locations.map((l) => [l.longitude, l.latitude]);
     if (me) points.push([me.longitude, me.latitude]);
     if (points.length === 0) return;
@@ -73,6 +115,7 @@ export default function MapScreen() {
   const zoomToMe = () => {
     setFitted(false);
     setFollow(null);
+    setGroupIds(null);
     if (!me) return;
     cameraRef.current?.flyTo({ center: [me.longitude, me.latitude], zoom: TOWN_ZOOM, ...NEUTRAL, duration: 800 });
   };
@@ -127,14 +170,31 @@ export default function MapScreen() {
 
   const onFriendPress = (userId: string) => {
     setFitted(false);
+    setGroupIds(null);
     setSelectedId(userId);
     setFollow(userId);
   };
 
   const onMePress = () => {
     setFitted(false);
+    setGroupIds(null);
     setSelectedId('me');
     setFollow('me');
+  };
+
+  // A group: zoom in just far enough that everyone in it stands alone, or,
+  // when that's closer than street level, list them instead.
+  const onGroupPress = (c: Cluster<MapPerson>) => {
+    setFitted(false);
+    setFollow(null);
+    setSelectedId(null);
+    if (c.splitZoom <= MAX_SPLIT_ZOOM) {
+      setGroupIds(null);
+      cameraRef.current?.easeTo({ center: c.lngLat, zoom: c.splitZoom + 0.3, duration: 600 });
+    } else {
+      setGroupIds(c.members.map((p) => p.id));
+      cameraRef.current?.easeTo({ center: c.lngLat, duration: 600 });
+    }
   };
 
   const onMapPress = (e: NativeSyntheticEvent<any>) => {
@@ -142,6 +202,7 @@ export default function MapScreen() {
     // marker's id; without this it undid the follow the marker just started.
     if (e.nativeEvent?.id !== undefined || e.nativeEvent?.features?.length) return;
     setSelectedId(null);
+    setGroupIds(null);
     setFollow(null);
   };
 
@@ -158,11 +219,14 @@ export default function MapScreen() {
   const shownPerson = meSelected ? me : selected;
   const onRegionDidChange = (e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
     zoom.current = e.nativeEvent.zoom;
+    setZoomLevel(e.nativeEvent.zoom);
     if (!movedByUser.current) return;
     movedByUser.current = false;
     if (shownPerson && !inMiddle(e.nativeEvent.bounds, shownPerson.longitude, shownPerson.latitude)) {
       setSelectedId(null);
     }
+    const g = group?.[0];
+    if (g && !inMiddle(e.nativeEvent.bounds, g.lngLat[0], g.lngLat[1])) setGroupIds(null);
   };
 
   return (
@@ -180,40 +244,65 @@ export default function MapScreen() {
       >
         <Camera ref={cameraRef} />
         {/* You: your profile picture (or initials) ringed in the theme color
-            with a soft halo, drawn first so friends' markers sit on top. */}
-        {me && (
-          <GlidingMarker id="me" lngLat={[me.longitude, me.latitude]} onPress={onMePress}>
-            <View style={styles.meHalo}>
+            with a soft halo. Friends: theirs in a white ring, faded once
+            their position is old. You come first, so friends sit on top. */}
+        {clusters.map((c) => {
+          if (c.members.length > 1) {
+            return (
+              <GlidingMarker key={c.key} id={`group-${c.key}`} lngLat={c.lngLat} onPress={() => onGroupPress(c)}>
+                <View style={styles.pile}>
+                  {(c.members.length > 3 ? c.members.slice(0, 2) : c.members).map((p, i) => (
+                    <Avatar
+                      key={p.id}
+                      name={p.name}
+                      avatarId={p.avatarId}
+                      size={30}
+                      stale={p.stale}
+                      style={[
+                        styles.marker,
+                        { borderColor: p.isMe ? theme.primary : theme.markerStroke },
+                        i > 0 && styles.pileOverlap,
+                      ]}
+                    />
+                  ))}
+                  {c.members.length > 3 && (
+                    <View style={[styles.marker, styles.more, styles.pileOverlap]}>
+                      <Text style={styles.moreText}>+{c.members.length - 2}</Text>
+                    </View>
+                  )}
+                </View>
+              </GlidingMarker>
+            );
+          }
+          const p = c.members[0];
+          return p.isMe ? (
+            <GlidingMarker key="me" id="me" lngLat={p.lngLat} onPress={onMePress}>
+              <View style={styles.meHalo}>
+                <Avatar
+                  name={p.name}
+                  avatarId={p.avatarId}
+                  size={30}
+                  style={[styles.marker, { borderColor: theme.primary }]}
+                />
+              </View>
+            </GlidingMarker>
+          ) : (
+            <GlidingMarker key={p.id} id={`friend-${p.id}`} lngLat={p.lngLat} onPress={() => onFriendPress(p.id)}>
               <Avatar
-                name={user?.displayName ?? ''}
-                avatarId={user?.avatarId}
+                name={p.name}
+                avatarId={p.avatarId}
                 size={30}
-                style={[styles.marker, { borderColor: theme.primary }]}
+                stale={p.stale}
+                style={[styles.marker, { borderColor: theme.markerStroke }]}
               />
-            </View>
-          </GlidingMarker>
-        )}
-        {/* Friends: their profile picture, or their initials, in a ringed
-            circle (Avatar), faded once their position is old. */}
-        {locations.map((l) => (
-          <GlidingMarker
-            key={l.userId}
-            id={`friend-${l.userId}`}
-            lngLat={[l.longitude, l.latitude]}
-            onPress={() => onFriendPress(l.userId)}
-          >
-            <Avatar
-              name={l.displayName}
-              avatarId={l.avatarId}
-              size={30}
-              stale={isStale(l.recordedAt, now)}
-              style={[styles.marker, { borderColor: theme.markerStroke }]}
-            />
-          </GlidingMarker>
-        ))}
+            </GlidingMarker>
+          );
+        })}
       </Map>
 
       <MapChrome
+        group={selected || meSelected ? null : group}
+        onPick={(id) => (id === 'me' ? onMePress() : onFriendPress(id))}
         pendingCount={pendingCount}
         onFit={() => fitEveryone()}
         onLocate={fitted ? zoomToMe : undefined}
@@ -251,11 +340,38 @@ function GlidingMarker({
 // How far past a marker's edge a tap still counts as on it.
 const hitArea = { padding: 10 };
 
+// Someone on the map, as clustering and the group card need them.
+type MapPerson = GroupPerson & { lngLat: LngLat };
+
 const makeStyles = (theme: Theme) =>
   StyleSheet.create({
     root: { flex: 1, backgroundColor: theme.bg },
     map: { flex: 1 },
     marker: { borderWidth: 2 },
+    // A group marker: overlapping faces on a rounded backing, so it reads as
+    // one thing rather than markers piled up by accident.
+    pile: {
+      flexDirection: 'row',
+      padding: 3,
+      borderRadius: 20,
+      backgroundColor: theme.surface,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    pileOverlap: { marginLeft: -12 },
+    more: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      borderColor: theme.markerStroke,
+      backgroundColor: theme.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    moreText: { color: '#fff', fontSize: 12, fontWeight: '700' },
     meHalo: {
       width: 44,
       height: 44,
