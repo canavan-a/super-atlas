@@ -84,7 +84,9 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
 </main></body></html>`))
 
 // assetLinks lets Android open /i/ links straight in the app, once the
-// release signing cert's fingerprint is configured.
+// release signing cert's fingerprint is configured. get_login_creds
+// (credential sharing between site and app) does nothing for an app that
+// signs in with emailed codes, but Play Console checks for it.
 func assetLinks(certSHA256 []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -93,7 +95,10 @@ func assetLinks(certSHA256 []string) http.HandlerFunc {
 			return
 		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{
-			"relation": []string{"delegate_permission/common.handle_all_urls"},
+			"relation": []string{
+				"delegate_permission/common.handle_all_urls",
+				"delegate_permission/common.get_login_creds",
+			},
 			"target": map[string]any{
 				"namespace":                "android_app",
 				"package_name":             androidPackage,

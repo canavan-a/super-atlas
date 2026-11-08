@@ -53,7 +53,8 @@ func TestAssetLinks(t *testing.T) {
 	rec = httptest.NewRecorder()
 	assetLinks([]string{"AB:CD"})(rec, httptest.NewRequest(http.MethodGet, "/.well-known/assetlinks.json", nil))
 	var body []struct {
-		Target struct {
+		Relation []string `json:"relation"`
+		Target   struct {
 			PackageName  string   `json:"package_name"`
 			Fingerprints []string `json:"sha256_cert_fingerprints"`
 		} `json:"target"`
@@ -63,5 +64,8 @@ func TestAssetLinks(t *testing.T) {
 	}
 	if len(body) != 1 || body[0].Target.PackageName != androidPackage || body[0].Target.Fingerprints[0] != "AB:CD" {
 		t.Fatalf("body %+v", body)
+	}
+	if len(body[0].Relation) != 2 || body[0].Relation[0] != "delegate_permission/common.handle_all_urls" {
+		t.Fatalf("relation %v", body[0].Relation)
 	}
 }
