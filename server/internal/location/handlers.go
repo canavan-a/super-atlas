@@ -67,11 +67,16 @@ func (h *Handlers) Stream(w http.ResponseWriter, r *http.Request) {
 	go client.WritePump()
 
 	// Send an initial snapshot of friends' last-known positions so the map
-	// has something to show before any friend's next live update arrives.
-	// It goes out as one frame so a long friends list can't overflow the
-	// client's send buffer.
+	// has something to show before any friend's next live update arrives,
+	// plus your own last position as "me" (when there is one) for the web
+	// map. It goes out as one frame so a long friends list can't overflow
+	// the client's send buffer.
 	if snapshot, err := h.service.SnapshotForViewer(r.Context(), userID); err == nil {
-		payload, _ := json.Marshal(map[string]any{"type": "snapshot", "locations": snapshot})
+		frame := map[string]any{"type": "snapshot", "locations": snapshot}
+		if own, err := h.service.Own(r.Context(), userID); err == nil && own != nil {
+			frame["me"] = own
+		}
+		payload, _ := json.Marshal(frame)
 		client.Send(payload)
 	}
 

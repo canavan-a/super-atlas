@@ -222,3 +222,43 @@ func TestGhostLeavesOpenMaps(t *testing.T) {
 		t.Fatalf("leaving ghost mode: bob got %s", got)
 	}
 }
+
+// TestOwnPositionReachesOwnMaps: your own open maps (the web build) get your
+// phone's position, in the snapshot and live, ghost mode or not, and never
+// as a friend's location_update.
+func TestOwnPositionReachesOwnMaps(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t)
+	ada := w.user(t, "ada", "Ada")
+
+	if own, err := w.location.Own(ctx, ada); err != nil || own != nil {
+		t.Fatalf("no position yet: %v %+v", err, own)
+	}
+
+	adasWeb := &Client{send: make(chan []byte, 8)}
+	w.hub.Register(ada, adasWeb)
+	next := func() string {
+		t.Helper()
+		select {
+		case p := <-adasWeb.send:
+			var m struct{ Type, UserID string }
+			_ = json.Unmarshal(p, &m)
+			return m.Type + " " + m.UserID
+		default:
+			return "nothing"
+		}
+	}
+
+	_ = w.location.SetPaused(ctx, ada, true)
+	_ = w.location.UpdateLocation(ctx, ada, Fix{Latitude: 1, Longitude: 2, RecordedAt: time.Now()})
+	if got := next(); got != "self_update ada" {
+		t.Fatalf("ada's own map got %s", got)
+	}
+	if got := next(); got != "nothing" {
+		t.Fatalf("ada's own map then got %s", got)
+	}
+	own, err := w.location.Own(ctx, ada)
+	if err != nil || own == nil || own.Latitude != 1 || own.DisplayName != "Ada" {
+		t.Fatalf("own position in ghost mode: %v %+v", err, own)
+	}
+}

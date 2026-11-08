@@ -5,8 +5,8 @@ import { useLocationStream } from '../location/useLocationStream';
 
 // What both map screens (Android and web) show: friends' live positions,
 // filtered to current friends (the stream only ever adds people, so this
-// drops anyone just removed), your own position (Android only; null on the
-// web), the count of requests waiting on you, who is tapped (a friend's
+// drops anyone just removed), your own position (this phone's GPS; on the
+// web, your phone's last report), the count of requests waiting on you, who is tapped (a friend's
 // userId, or 'me' for you), a clock that ticks each minute so "last seen" and
 // faded markers stay current, and focus: a friend the map was opened to show
 // ("Show on map" in the friends list), once they're on it. The screen

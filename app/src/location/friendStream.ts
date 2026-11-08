@@ -39,9 +39,12 @@ function toFriendLocation(data: any): FriendLocation {
 // who goes into ghost mode drops off as they do, and each
 // connect starts with a fresh snapshot that leaves out anyone who did so
 // meanwhile. Receiving only: useLocationStream adds sending this
-// device's position on Android (the web build never sends one).
+// device's position on Android (the web build never sends one). `own` is
+// your account's last position as the server has it (your phone's), which
+// the web map shows as you; the phone draws its own GPS fix instead.
 export function useFriendStream() {
   const [friendLocations, setFriendLocations] = useState<Record<string, FriendLocation>>({});
+  const [own, setOwn] = useState<FriendLocation | null>(null);
   const socket = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -80,6 +83,9 @@ export function useFriendStream() {
             const next: Record<string, FriendLocation> = {};
             for (const l of data.locations ?? []) next[l.userId] = toFriendLocation(l);
             setFriendLocations(next);
+            setOwn(data.me ? toFriendLocation(data.me) : null);
+          } else if (data.type === 'self_update') {
+            setOwn(toFriendLocation(data));
           } else if (data.type === 'location_update') {
             setFriendLocations((prev) => ({ ...prev, [data.userId]: toFriendLocation(data) }));
           } else if (data.type === 'location_removed') {
@@ -126,5 +132,5 @@ export function useFriendStream() {
     };
   }, []);
 
-  return { locations: Object.values(friendLocations), socket };
+  return { locations: Object.values(friendLocations), own, socket };
 }

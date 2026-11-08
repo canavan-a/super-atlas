@@ -57,13 +57,37 @@ func payloadFor(l Location) updatePayload {
 	return p
 }
 
-// UpdateLocation stores a new position for userID and, unless the user is in
-// ghost mode, pushes it live to every accepted friend with an open WebSocket
-// connection. A fix older than the stored one is dropped.
+// UpdateLocation stores a new position for userID, pushes it to userID's own
+// open connections as a self_update and, unless the user is in ghost mode,
+// live to every accepted friend with one. A fix older than the stored one is
+// dropped.
 func (s *Service) UpdateLocation(ctx context.Context, userID string, fix Fix) error {
 	hereSince, ok, err := s.store.Upsert(ctx, userID, fix)
 	if err != nil || !ok {
 		return err
+	}
+
+	p, err := s.profile(ctx, userID)
+	if err != nil {
+		return err
+	}
+	update := payloadFor(Location{
+		UserID:      userID,
+		DisplayName: p.name,
+		AvatarID:    p.avatarID,
+		Latitude:    fix.Latitude,
+		Longitude:   fix.Longitude,
+		AccuracyM:   fix.AccuracyM,
+		SpeedMps:    fix.SpeedMps,
+		RecordedAt:  fix.RecordedAt,
+		HereSince:   hereSince,
+	})
+
+	// Your own open maps get your position too, ghost mode or not: the web
+	// build has no location of its own and shows your phone's.
+	update.Type = "self_update"
+	if own, err := json.Marshal(update); err == nil {
+		s.hub.PushTo(userID, own)
 	}
 
 	ghost, err := s.GhostMode(ctx, userID)
@@ -76,21 +100,8 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, fix Fix) er
 		return err
 	}
 
-	p, err := s.profile(ctx, userID)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(payloadFor(Location{
-		UserID:      userID,
-		DisplayName: p.name,
-		AvatarID:    p.avatarID,
-		Latitude:    fix.Latitude,
-		Longitude:   fix.Longitude,
-		AccuracyM:   fix.AccuracyM,
-		SpeedMps:    fix.SpeedMps,
-		RecordedAt:  fix.RecordedAt,
-		HereSince:   hereSince,
-	}))
+	update.Type = "location_update"
+	payload, err := json.Marshal(update)
 	if err != nil {
 		return err
 	}
@@ -170,6 +181,18 @@ func (s *Service) SnapshotForViewer(ctx context.Context, userID string) ([]updat
 		out = append(out, payloadFor(l))
 	}
 	return out, nil
+}
+
+// Own returns userID's own last position for their own map (ghost mode or
+// not), or nil when they have none yet.
+func (s *Service) Own(ctx context.Context, userID string) (*updatePayload, error) {
+	l, err := s.store.GetOwn(ctx, userID)
+	if err != nil || l == nil {
+		return nil, err
+	}
+	p := payloadFor(*l)
+	p.Type = "self_update"
+	return &p, nil
 }
 
 func (s *Service) GhostMode(ctx context.Context, userID string) (bool, error) {

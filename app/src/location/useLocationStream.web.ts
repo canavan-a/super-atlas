@@ -1,10 +1,19 @@
+import { useMemo } from 'react';
 import { FriendLocation, useFriendStream } from './friendStream';
 import type { MyPosition } from './useLocationStream';
 
 export type { FriendLocation };
 
-// The web build is view only: it shows friends' positions and never sends
-// this browser's location (no geolocation is ever requested).
+// The web build is view only: it never asks for or sends this browser's
+// location. "Me" here is your phone's last position, as the server has it.
 export function useLocationStream(): { locations: FriendLocation[]; me: MyPosition | null } {
-  return { locations: useFriendStream().locations, me: null };
+  const { locations, own } = useFriendStream();
+  const me = useMemo(
+    () =>
+      own
+        ? { latitude: own.latitude, longitude: own.longitude, accuracyM: own.accuracyM ?? null, recordedAt: own.recordedAt }
+        : null,
+    [own]
+  );
+  return { locations, me };
 }

@@ -84,21 +84,36 @@ const stillNear = `(locations.here_since IS NOT NULL
 	AND ABS(excluded.latitude - locations.here_lat) < 0.0009
 	AND ABS(excluded.longitude - locations.here_lng) < 0.0012)`
 
+const selectLocations = `SELECT l.user_id, u.display_name, COALESCE(a.id, ''), l.latitude, l.longitude, l.accuracy_m, l.speed_mps, l.recorded_at, l.updated_at, l.here_since
+	FROM locations l
+	JOIN users u ON u.id = l.user_id
+	LEFT JOIN avatars a ON a.user_id = l.user_id
+	LEFT JOIN user_settings us ON us.user_id = l.user_id
+	WHERE `
+
 func (s *Store) GetForUsers(ctx context.Context, userIDs []string) ([]Location, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
 	}
-	// Users in ghost mode are left out here, so callers never have to filter.
-	query := `SELECT l.user_id, u.display_name, COALESCE(a.id, ''), l.latitude, l.longitude, l.accuracy_m, l.speed_mps, l.recorded_at, l.updated_at, l.here_since
-		FROM locations l
-		JOIN users u ON u.id = l.user_id
-		LEFT JOIN avatars a ON a.user_id = l.user_id
-		LEFT JOIN user_settings us ON us.user_id = l.user_id
-		WHERE COALESCE(us.sharing_paused, 0) = 0 AND l.user_id IN (` + placeholders(len(userIDs)) + `)`
 	args := make([]any, len(userIDs))
 	for i, id := range userIDs {
 		args[i] = id
 	}
+	// Users in ghost mode are left out here, so callers never have to filter.
+	return s.query(ctx, selectLocations+`COALESCE(us.sharing_paused, 0) = 0 AND l.user_id IN (`+placeholders(len(userIDs))+`)`, args...)
+}
+
+// GetOwn returns userID's own last position, ghost mode or not (it's theirs
+// to see), or nil when they have none yet.
+func (s *Store) GetOwn(ctx context.Context, userID string) (*Location, error) {
+	locs, err := s.query(ctx, selectLocations+`l.user_id = ?`, userID)
+	if err != nil || len(locs) == 0 {
+		return nil, err
+	}
+	return &locs[0], nil
+}
+
+func (s *Store) query(ctx context.Context, query string, args ...any) ([]Location, error) {
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

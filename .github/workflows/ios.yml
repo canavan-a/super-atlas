@@ -21,6 +21,8 @@
 #  ASC_KEY_ID              the API key's ID
 #  ASC_ISSUER_ID           the issuer ID shown above the keys
 #  ASC_KEY_P8_BASE64       base64 -w0 AuthKey_XXXX.p8
+# And a repo variable (not a secret, so it shows in the logs):
+#  SUPERATLAS_API_URL      the server, e.g. https://superatlas.lunargen.com
 
 name: iOS build
 
@@ -89,16 +91,19 @@ jobs:
             -e "s/CURRENT_PROJECT_VERSION = [^;]*;/CURRENT_PROJECT_VERSION = $VERSION_CODE;/" \
             SuperAtlasApp.xcodeproj/project.pbxproj
 
-      # The server the app talks to and takes invite links from, as the
-      # Android release scripts do: release/app.env's SUPERATLAS_API_URL, set
-      # as the project's SUPERATLAS_API_URL and SUPERATLAS_API_HOST (the
-      # Associated Domains entitlement).
+      # The server the app talks to and takes invite links from: the
+      # SUPERATLAS_API_URL repo variable (release/app.env's, which the Android
+      # release scripts read, isn't committed), set as the project's
+      # SUPERATLAS_API_URL and SUPERATLAS_API_HOST (the Associated Domains
+      # entitlement).
       - name: Server
         working-directory: app/ios
+        env:
+          SUPERATLAS_API_URL: ${{ vars.SUPERATLAS_API_URL }}
         run: |
-          url="$(sed -n 's/^SUPERATLAS_API_URL=//p' ../../release/app.env | tr -d '"' | sed 's#/*$##')"
+          url="$(printf '%s' "$SUPERATLAS_API_URL" | tr -d '"' | sed 's#/*$##')"
           if [[ "$url" != https://* ]]; then
-            echo "::error::release/app.env needs an https SUPERATLAS_API_URL"; exit 1
+            echo "::error::set the SUPERATLAS_API_URL repo variable to the server's https URL"; exit 1
           fi
           host="${url#https://}"; host="${host%%/*}"
           sed -i '' \

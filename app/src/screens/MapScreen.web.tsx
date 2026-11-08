@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { useAuth } from '../auth/AuthContext';
 import { avatarUrl, initialsFor } from '../components/Avatar';
 import { MapChrome, type GroupPerson } from '../components/MapChrome';
 import type { FriendLocation } from '../location/friendStream';
@@ -18,21 +19,43 @@ const NEUTRAL = { bearing: 0, pitch: 0 };
 // north-up (see MapScreen.tsx).
 const TOWN_ZOOM = 13;
 const START_ZOOM = 1.5;
+// You, among the map's people (useMapData's id for you too).
+const ME_ID = 'me';
 
 // The browser's map, on maplibre-gl with the same basemaps, markers and
 // buttons as the Android map (MapScreen.tsx), groups of nearby friends
-// included. It only ever shows friends: the web build never asks for or
-// sends this device's location, and says so.
+// included. The web build never asks for or sends this device's location,
+// and says so: "you" on it is your phone, where it last reported from.
 export default function MapScreen() {
   const theme = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const { locations, now, pendingCount, noFriends, selected, setSelectedId, focus, focusDone } = useMapData();
+  const { user } = useAuth();
+  const { locations: friends, me, now, pendingCount, noFriends, selected, meSelected, setSelectedId, focus, focusDone } =
+    useMapData();
+  // Everyone on the map: you (your phone, as ME_ID) first, then friends.
+  const locations = useMemo<FriendLocation[]>(
+    () =>
+      me
+        ? [
+            {
+              userId: ME_ID,
+              displayName: user?.displayName ?? '',
+              avatarId: user?.avatarId,
+              latitude: me.latitude,
+              longitude: me.longitude,
+              recordedAt: me.recordedAt ?? new Date().toISOString(),
+            },
+            ...friends,
+          ]
+        : friends,
+    [me, friends, user]
+  );
   const container = useRef<View>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  // The friend whose card is up, for the map's own handlers.
-  const shown = useRef(selected);
-  shown.current = selected;
-  // One marker per friend standing alone, or per group (by cluster key).
+  // Whoever's card is up (a friend or you), for the map's own handlers.
+  const shown = useRef<{ latitude: number; longitude: number } | null>(selected);
+  shown.current = meSelected ? me : selected;
+  // One marker per person standing alone, or per group (by cluster key).
   const markers = useRef(new Map<string, maplibregl.Marker>());
   const fittedOnce = useRef(false);
   const latest = useRef<FriendLocation[]>(locations);
@@ -254,7 +277,7 @@ export default function MapScreen() {
         name: l.displayName,
         avatarId: l.avatarId,
         stale: isStale(l.recordedAt, now),
-        isMe: false,
+        isMe: l.userId === ME_ID,
       }))
     : null;
 
@@ -265,10 +288,12 @@ export default function MapScreen() {
         pendingCount={pendingCount}
         onFit={() => fitEveryone()}
         selected={selected}
+        meSelected={meSelected}
+        me={me}
         now={now}
         noFriends={noFriends}
-        notice="View only — the web version doesn't share your location."
-        group={selected ? null : groupPeople}
+        notice="View only — you're shown where your phone last was."
+        group={selected || meSelected ? null : groupPeople}
         onPick={(id) => {
           const friend = latest.current.find((f) => f.userId === id);
           if (friend) followFriend(friend);
@@ -280,13 +305,20 @@ export default function MapScreen() {
 
 // The same marker as the Android map (Avatar): a circle with the friend's
 // profile picture or initials, faded once their position is over an hour old.
+// You: ringed in the theme color with a soft halo, as on Android.
 function styleFace(el: HTMLElement, l: FriendLocation, theme: Theme, stale: boolean) {
+  const isMe = l.userId === ME_ID;
   el.replaceChildren();
   el.textContent = l.avatarId ? '' : initialsFor(l.displayName);
-  el.title = l.displayName;
-  el.setAttribute('aria-label', l.displayName || 'Friend');
-  Object.assign(el.style, faceStyle(theme, stale, l.avatarId));
-  Object.assign(el.style, { cursor: 'pointer', padding: '0', display: 'block', boxShadow: 'none' });
+  el.title = isMe ? 'You (your phone)' : l.displayName;
+  el.setAttribute('aria-label', isMe ? 'You' : l.displayName || 'Friend');
+  Object.assign(el.style, faceStyle(theme, stale, l.avatarId, isMe));
+  Object.assign(el.style, {
+    cursor: 'pointer',
+    padding: '0',
+    display: 'block',
+    boxShadow: isMe ? `0 0 0 7px ${theme.primary}33` : 'none',
+  });
 }
 
 // A group, as on Android: up to three faces overlapping on a rounded
@@ -296,7 +328,7 @@ function stylePile(el: HTMLElement, members: FriendLocation[], theme: Theme, now
   const children = faces.map((l, i) => {
     const face = document.createElement('div');
     face.textContent = l.avatarId ? '' : initialsFor(l.displayName);
-    Object.assign(face.style, faceStyle(theme, isStale(l.recordedAt, now), l.avatarId), {
+    Object.assign(face.style, faceStyle(theme, isStale(l.recordedAt, now), l.avatarId, l.userId === ME_ID), {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -318,9 +350,9 @@ function stylePile(el: HTMLElement, members: FriendLocation[], theme: Theme, now
     children.push(more);
   }
   el.replaceChildren(...children);
-  const names = members.map((l) => l.displayName || 'Friend').join(', ');
+  const names = members.map((l) => (l.userId === ME_ID ? 'You' : l.displayName || 'Friend')).join(', ');
   el.title = names;
-  el.setAttribute('aria-label', `${members.length} friends: ${names}`);
+  el.setAttribute('aria-label', `${members.length} people: ${names}`);
   Object.assign(el.style, {
     width: 'auto',
     height: 'auto',
@@ -336,13 +368,13 @@ function stylePile(el: HTMLElement, members: FriendLocation[], theme: Theme, now
   });
 }
 
-function faceStyle(theme: Theme, stale: boolean, avatarId?: string): Partial<CSSStyleDeclaration> {
+function faceStyle(theme: Theme, stale: boolean, avatarId?: string, isMe = false): Partial<CSSStyleDeclaration> {
   return {
     width: '30px',
     height: '30px',
     boxSizing: 'border-box',
     borderRadius: '15px',
-    border: `2px solid ${theme.markerStroke}`,
+    border: `2px solid ${isMe ? theme.primary : theme.markerStroke}`,
     backgroundColor: stale ? theme.staleMarker : theme.friendMarker,
     backgroundImage: avatarId ? `url("${avatarUrl(avatarId)}")` : 'none',
     backgroundSize: 'cover',

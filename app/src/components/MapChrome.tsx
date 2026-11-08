@@ -42,7 +42,7 @@ export function MapChrome({
    *  this instead, so it toggles between everyone and you (Android only). */
   onLocate?: () => void;
   selected: FriendLocation | null;
-  /** You were tapped: show the "You" card (Android only; the web has no you). */
+  /** You were tapped: show the "You" card (on the web, you are your phone). */
   meSelected?: boolean;
   /** Your position, named on the "You" card. */
   me?: { latitude: number; longitude: number } | null;

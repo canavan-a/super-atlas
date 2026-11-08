@@ -5,7 +5,8 @@ import { usePermissions } from './permissionsContext';
 
 export type { FriendLocation };
 
-export type MyPosition = { latitude: number; longitude: number; accuracyM: number | null };
+// recordedAt: only on the web, where "me" is your phone's last report.
+export type MyPosition = { latitude: number; longitude: number; accuracyM: number | null; recordedAt?: string };
 
 // Friends' positions in, and this device's position out over the same
 // socket while the app is open. The same fixes draw your own dot on the map,
