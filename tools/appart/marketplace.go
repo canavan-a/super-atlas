@@ -8,15 +8,24 @@ import (
 	"path/filepath"
 )
 
-// writeMarketplace renders the Google Play graphics in the default (dark)
-// theme, as super-chat's does: the 512x512 app icon (a full square, which
-// Play rounds itself) and the 1024x500 feature graphic, the open scroll with
-// the wordmark centered on the theme's background.
+// writeMarketplace renders the store graphics in the default (dark) theme, as
+// super-chat's does, all but the icon the open scroll with the wordmark
+// centered on the theme's background. Google Play: the 512x512 app icon (a
+// full square, which Play rounds itself) and the 1024x500 feature graphic.
+// App Store: the 3840x1646 product page header, whose scroll stays inside
+// Apple's centred 1646x661 safe area since the sides are cropped on narrow
+// screens, and the 3840x2560 (3:2) search results image.
 func writeMarketplace(dir string, p Palette, s scroll) error {
 	if err := writePNG(filepath.Join(dir, "icon-512.png"), renderIcon(p, s.launcher, 512, false, 0)); err != nil {
 		return err
 	}
-	return writePNG(filepath.Join(dir, "feature-graphic-1024x500.png"), renderBanner(p, s.icon, 1024, 500, 0.6*1024, 0.7*500))
+	if err := writePNG(filepath.Join(dir, "feature-graphic-1024x500.png"), renderBanner(p, s.icon, 1024, 500, 0.6*1024, 0.7*500)); err != nil {
+		return err
+	}
+	if err := writePNG(filepath.Join(dir, "appstore-header-3840x1646.png"), renderBanner(p, s.icon, 3840, 1646, 0.9*1646, 0.9*661)); err != nil {
+		return err
+	}
+	return writePNG(filepath.Join(dir, "appstore-search-3840x2560.png"), renderBanner(p, s.icon, 3840, 2560, 0.6*3840, 0.7*2560))
 }
 
 // renderBanner draws a picture centered on the theme's background, as large
