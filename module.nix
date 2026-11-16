@@ -17,8 +17,8 @@ let
   npmCache = "/var/cache/superatlas-npm";
   webDir = "${stateDir}/web";
 
-  # `superatlas-admin allow <email>` etc. against the running service's
-  # database: who's allowed to sign in.
+  # `superatlas-admin cap <n>` etc. against the running service's
+  # database: how many accounts there may be.
   adminWrapper = pkgs.writeShellScriptBin "superatlas-admin" ''
     export SUPERATLAS_DATA_DIR="${cfg.dataDir}"
     exec ${pkgs.sudo}/bin/sudo -u superatlas -E ${adminBin} "$@"
@@ -95,10 +95,21 @@ in
         File with the SMTP account sign-in codes are sent from:
         SUPERATLAS_SMTP_EMAIL=… and SUPERATLAS_SMTP_APP_PASSWORD=… (an app
         password), plus SUPERATLAS_SMTP_HOST=… and SUPERATLAS_SMTP_PORT=…
-        for anything but Gmail (default smtp.gmail.com, 587). Without it nobody can sign in, and even with it only
-        emails added with `superatlas-admin allow <email>` get a code. Give
-        a runtime path as a string, not a Nix path literal (which would copy
-        it into the store).
+        for anything but Gmail (default smtp.gmail.com, 587). Without it
+        nobody can sign in. Anyone can sign up until there are 150 accounts;
+        `superatlas-admin cap <n>` changes that. Give a runtime path as a
+        string, not a Nix path literal (which would copy it into the store).
+      '';
+    };
+
+    signupAlertEmail = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "me@example.com";
+      description = ''
+        Emailed (from the SMTP account) whenever someone makes an account,
+        with how many of the cap's places are taken. Empty: no alerts. Can
+        also be set as SUPERATLAS_SIGNUP_ALERT_EMAIL in environmentFile.
       '';
     };
 
@@ -121,8 +132,8 @@ in
         example = "tester@example.com";
         description = ''
           An account for app store reviewers: this email signs in with
-          reviewAccount.code, needs no allowlist entry, and is never sent an
-          email. Otherwise it's an ordinary account friends can add. Empty
+          reviewAccount.code, can sign up even when the cap is reached, and
+          is never sent an email. Otherwise it's an ordinary account friends can add. Empty
           (or no code): off.
         '';
       };
@@ -214,6 +225,8 @@ in
       } // lib.optionalAttrs (cfg.reviewAccount.email != "" && cfg.reviewAccount.code != "") {
         SUPERATLAS_REVIEW_EMAIL = cfg.reviewAccount.email;
         SUPERATLAS_REVIEW_CODE = cfg.reviewAccount.code;
+      } // lib.optionalAttrs (cfg.signupAlertEmail != "") {
+        SUPERATLAS_SIGNUP_ALERT_EMAIL = cfg.signupAlertEmail;
       } // lib.optionalAttrs (cfg.fcmCredentialsFile != null) {
         SUPERATLAS_FCM_CREDENTIALS_FILE = "%d/fcm.json";
       } // lib.optionalAttrs cfg.web.enable {

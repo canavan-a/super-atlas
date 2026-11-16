@@ -49,6 +49,10 @@ func main() {
 		authService.SetReviewAccount(cfg.ReviewEmail, cfg.ReviewCode)
 		log.Printf("review account on: %s signs in with its fixed code", cfg.ReviewEmail)
 	}
+	if cfg.SignupAlertEmail != "" {
+		authService.SetSignupAlert(cfg.SignupAlertEmail)
+		log.Printf("signup alerts go to %s", cfg.SignupAlertEmail)
+	}
 	go authService.RunJanitor(ctx)
 
 	// Friend notifications: the sideload app's background connection, plus

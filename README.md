@@ -9,9 +9,9 @@ screen and sideloaded Android APK) and runs on your own server.
   remove the other any time.
 - **One privacy switch.** Ghost mode hides you from everyone until you turn it
   off. That's the only setting there is.
-- **Invite only, no passwords.** Whoever runs the server lists who may join
-  (`superatlas-admin allow <email>`); those people sign in with a code
-  emailed to them. A device stays signed in until it's unused for 90 days or
+- **Capped, no passwords.** Anyone can sign up, with a code emailed to them,
+  until there are 150 accounts; whoever runs the server raises that with
+  `superatlas-admin cap <n>`. A device stays signed in until it's unused for 90 days or
   you sign out.
 - **Live, then periodic.** While the app is open your position streams to
   friends; while it's closed Android uploads one about every 15 minutes.
@@ -44,7 +44,7 @@ module.nix  NixOS module: services.superatlas
 ```sh
 nix develop          # prints the dev commands
 dev-up               # server on 127.0.0.1:8080 (dev mode: sign-in codes go to the log)
-superatlas-admin allow you@example.com   # only listed emails can sign in
+superatlas-admin cap                     # accounts so far, and the cap (150)
 run-app-web          # web client on :5173, talking to that server
 run-app-android      # on an emulator, which reaches the server at 10.0.2.2:8080
 run-tests            # Go tests and the app's typecheck
@@ -57,15 +57,17 @@ services.superatlas = {
   enable = true;
   publicOrigin = "https://atlas.example.com";
   environmentFile = "/run/secrets/superatlas.env";   # SUPERATLAS_SMTP_EMAIL / _APP_PASSWORD
+  signupAlertEmail = "me@example.com";               # emailed when someone signs up
   web.enable = true;                                 # the view-only browser client at /
   # fcmCredentialsFile = "/run/secrets/superatlas-fcm.json";  # Google Play notifications
 };
 ```
 
 It listens on loopback; put a Cloudflare tunnel (or any TLS proxy) in front.
-Then let people in with `superatlas-admin allow <email>...` (also
-`remove <email>`, which signs them out everywhere, and `list`). Anyone with
-an account when the allowlist arrived is already on it.
+Anyone can sign up until there are 150 accounts (NPCs don't count); after
+that only existing accounts sign in. `superatlas-admin cap` shows how many
+are taken, `cap <n>` changes the cap, `list` shows everyone, and
+`remove <email>` deletes an account, freeing its place.
 
 ## Releases
 

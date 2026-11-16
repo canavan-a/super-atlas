@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"time"
 )
 
@@ -178,10 +179,9 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now time.Time) error 
 
 // DeleteUser deletes the account and everything tied to it. Deleting the
 // users row cascades to its sessions, push tokens, friendships, location,
-// settings and profile picture; its pending sign-in codes, its allowlist
-// entry (so the email is gone entirely, and the admin has to allow it again
-// for a new account) and any dev-mode "larp" fake friends it owns go here
-// too.
+// settings and profile picture; its pending sign-in codes and any dev-mode
+// "larp" fake friends it owns go here too. That frees its place under the
+// user cap.
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,74 +203,64 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	for _, q := range []string{
-		`DELETE FROM login_codes WHERE lower(email) = ?`,
-		`DELETE FROM allowed_emails WHERE email = ?`,
-	} {
-		if _, err := tx.ExecContext(ctx, q, email); err != nil {
-			return err
-		}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM login_codes WHERE lower(email) = ?`, email); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
 
-// IsAllowed reports whether email (already normalized) is on the allowlist.
-func (s *Store) IsAllowed(ctx context.Context, email string) (bool, error) {
+// countedUsers leaves out the accounts that aren't people: the built-in
+// NPCs (@lunargen.com) and dev-mode "larp" fake friends.
+const countedUsers = `
+	FROM users
+	WHERE email NOT LIKE '%@lunargen.com'
+	  AND id NOT IN (SELECT fake_user_id FROM larp_fake_users)`
+
+// CountUsers is how many real people have an account: what the user cap
+// limits.
+func (s *Store) CountUsers(ctx context.Context) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM allowed_emails WHERE email = ?`, email).Scan(&n)
-	return n > 0, err
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*)`+countedUsers).Scan(&n)
+	return n, err
 }
 
-// Allow adds email (already normalized) to the allowlist. Adding it twice is
-// a no-op.
-func (s *Store) Allow(ctx context.Context, email string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO allowed_emails (email) VALUES (?) ON CONFLICT(email) DO NOTHING`, email)
+// UserCap is the most accounts there may be; nobody new can sign up past it.
+func (s *Store) UserCap(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT CAST(value AS INTEGER) FROM app_settings WHERE key = 'user_cap'`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) SetUserCap(ctx context.Context, n int) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO app_settings (key, value) VALUES ('user_cap', ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, strconv.Itoa(n))
 	return err
 }
 
-// Disallow takes email (already normalized) off the allowlist and signs out
-// all of its account's sessions. The account and its friends stay, so
-// allowing the email again restores it. It reports whether email was listed.
-func (s *Store) Disallow(ctx context.Context, email string) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `DELETE FROM allowed_emails WHERE email = ?`, email)
-	if err != nil {
-		return false, err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE lower(email) = ?)`, email); err != nil {
-		return false, err
-	}
-	n, _ := res.RowsAffected()
-	return n > 0, tx.Commit()
-}
-
-// AllowedEmail is one allowlist entry, with the account's name once the
-// person has signed up.
-type AllowedEmail struct {
+// Member is one counted account, as superatlas-admin lists them.
+type Member struct {
 	Email       string
 	DisplayName string
+	CreatedAt   time.Time
 }
 
-func (s *Store) ListAllowed(ctx context.Context) ([]AllowedEmail, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.email, COALESCE(u.display_name, '')
-		FROM allowed_emails a LEFT JOIN users u ON lower(u.email) = a.email
-		ORDER BY a.email`)
+// ListUsers lists the counted accounts, oldest first.
+func (s *Store) ListUsers(ctx context.Context) ([]Member, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT email, display_name, created_at`+countedUsers+` ORDER BY created_at, email`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []AllowedEmail
+	var out []Member
 	for rows.Next() {
-		var a AllowedEmail
-		if err := rows.Scan(&a.Email, &a.DisplayName); err != nil {
+		var m Member
+		var created string
+		if err := rows.Scan(&m.Email, &m.DisplayName, &created); err != nil {
 			return nil, err
 		}
-		out = append(out, a)
+		m.CreatedAt = parseTime(created)
+		out = append(out, m)
 	}
 	return out, rows.Err()
 }

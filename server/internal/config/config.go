@@ -42,6 +42,9 @@ type Config struct {
 	// empty: no such account.
 	ReviewEmail string
 	ReviewCode  string
+	// SignupAlertEmail is emailed whenever someone makes an account. Empty:
+	// no alerts.
+	SignupAlertEmail string
 	// Dev enables debug-only behavior: the "larp" fake-friends trigger, and
 	// logging login codes when SMTP isn't configured.
 	Dev bool
@@ -67,6 +70,7 @@ func Load() *Config {
 		WebDir:             os.Getenv("SUPERATLAS_WEB_DIR"),
 		ReviewEmail:        os.Getenv("SUPERATLAS_REVIEW_EMAIL"),
 		ReviewCode:         os.Getenv("SUPERATLAS_REVIEW_CODE"),
+		SignupAlertEmail:   os.Getenv("SUPERATLAS_SIGNUP_ALERT_EMAIL"),
 		Dev:                os.Getenv("SUPERATLAS_DEV") == "1",
 	}
 }

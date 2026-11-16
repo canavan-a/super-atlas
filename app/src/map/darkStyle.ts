@@ -1,5 +1,6 @@
 import type { StyleSpecification } from 'maplibre-gl';
 import base from './ofm-dark.json';
+import { withPlaceLabels } from './placeLabels';
 
 // The dark themes' basemap. OpenFreeMap's "dark" style (ofm-dark.json, a
 // copy of https://tiles.openfreemap.org/styles/dark) is near-black on
@@ -87,7 +88,7 @@ function paints(p: MapPalette): Record<string, Paint> {
 export function darkMapStyle(p: MapPalette): StyleSpecification {
   const overrides = paints(p);
   const style = base as unknown as StyleSpecification;
-  return {
+  const recolored: StyleSpecification = {
     ...style,
     layers: style.layers.map((layer) => {
       const o = overrides[layer.id];
@@ -97,4 +98,7 @@ export function darkMapStyle(p: MapPalette): StyleSpecification {
       return { ...layer, paint } as typeof layer;
     }),
   };
+  // Business names and house numbers, which OpenFreeMap's dark style leaves
+  // out (src/map/placeLabels.ts).
+  return withPlaceLabels(recolored, { text: p.roadLabel, dot: p.roadLabel, halo: p.halo, number: p.boundary });
 }

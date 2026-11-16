@@ -58,7 +58,7 @@ func toUserResponse(u *User) userResponse {
 	return userResponse{ID: u.ID, Email: u.Email, DisplayName: u.DisplayName, AvatarID: u.AvatarID}
 }
 
-const notAllowedMessage = "this email isn't on the Super Atlas guest list yet, ask whoever runs it to add you"
+const fullMessage = "Super Atlas is full right now, ask whoever runs it to make room"
 
 type codeRequest struct {
 	Email string `json:"email"`
@@ -86,8 +86,8 @@ func (h *Handlers) Code(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "enter a valid email")
 			return
 		}
-		if errors.Is(err, ErrNotAllowed) {
-			writeError(w, http.StatusForbidden, notAllowedMessage)
+		if errors.Is(err, ErrFull) {
+			writeError(w, http.StatusForbidden, fullMessage)
 			return
 		}
 		if errors.Is(err, ErrTooManyCodes) {
@@ -126,8 +126,8 @@ func (h *Handlers) Verify(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrInvalidCode):
 			writeError(w, http.StatusUnauthorized, "that code is wrong or expired")
-		case errors.Is(err, ErrNotAllowed):
-			writeError(w, http.StatusForbidden, notAllowedMessage)
+		case errors.Is(err, ErrFull):
+			writeError(w, http.StatusForbidden, fullMessage)
 		case errors.Is(err, ErrNeedsName):
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "new account needs a name", "needsName": true})
 		default:

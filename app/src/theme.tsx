@@ -6,6 +6,10 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import type { StyleSpecification } from 'maplibre-gl';
 
 import { darkMapStyle } from './map/darkStyle';
+import fiord from './map/ofm-fiord.json';
+import liberty from './map/ofm-liberty.json';
+import positron from './map/ofm-positron.json';
+import { withPlaceLabels } from './map/placeLabels';
 import { settingsStore } from './settings';
 
 export type ThemeName = 'light' | 'dark' | 'slate' | 'sepia' | 'ember';
@@ -30,14 +34,22 @@ export interface Theme {
   friendMarkerText: string;
   staleMarker: string;
   markerStroke: string;
-  // Basemap that sits best under this palette: an OpenFreeMap style URL, or a
-  // recolored style (src/map/darkStyle.ts).
+  // Basemap that sits best under this palette: an OpenFreeMap style, copied
+  // into src/map with business names and house numbers added
+  // (src/map/placeLabels.ts), and recolored for the dark palettes
+  // (src/map/darkStyle.ts).
   mapStyle: string | StyleSpecification;
 }
 
-const MAP_LIGHT = 'https://tiles.openfreemap.org/styles/liberty';
-const MAP_FIORD = 'https://tiles.openfreemap.org/styles/fiord';
-const MAP_POSITRON = 'https://tiles.openfreemap.org/styles/positron';
+const asStyle = (json: unknown) => json as StyleSpecification;
+const MAP_LIGHT = withPlaceLabels(asStyle(liberty), { text: '#666', dot: '#999', halo: '#fff', number: '#9a948c' });
+const MAP_FIORD = withPlaceLabels(asStyle(fiord), {
+  text: 'hsl(223,31%,71%)',
+  dot: 'hsl(223,31%,61%)',
+  halo: 'hsl(232,9%,23%)',
+  number: 'hsl(223,20%,55%)',
+});
+const MAP_POSITRON = withPlaceLabels(asStyle(positron), { text: '#777', dot: '#aaa', halo: '#fff', number: '#a8a8a8' });
 
 // OpenFreeMap's own "dark" is too low-contrast to read; these recolor it
 // (src/map/darkStyle.ts) to sit under each dark palette.

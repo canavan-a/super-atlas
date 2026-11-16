@@ -45,8 +45,8 @@
             exec ${pkgs.air}/bin/air
           '';
 
-          # Who's allowed to sign in to the local server, e.g.
-          # `superatlas-admin allow you@example.com`.
+          # The local server's cap on accounts, e.g.
+          # `superatlas-admin cap 200`.
           superatlas-admin = pkgs.writeShellScriptBin "superatlas-admin" ''
             set -e
             export SUPERATLAS_DATA_DIR="${dataDir}"
@@ -111,7 +111,7 @@
             echo "  run-superatlas    # foreground: the server with hot reload (air) on ${listenAddr}"
             echo "  dev-up / dev-down # start/stop the server headless (logs in .data/logs)"
             echo "  db-reset          # delete the local database"
-            echo "  superatlas-admin  # allow <email> | remove <email> | list: who can sign in"
+            echo "  superatlas-admin  # cap [<n>] | list | remove <email>: the cap on accounts"
             echo "  run-app-web       # the app's web target via Vite on :5173"
             echo "  run-app-web-build # builds app/dist, which the server then serves at /"
             echo "  run-app-android   # the app on a connected device/emulator (needs the system Android SDK)"

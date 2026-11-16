@@ -12,6 +12,8 @@ import react from '@vitejs/plugin-react';
 // dev server on :8080.
 const API_PATHS = ['/auth', '/me', '/friends', '/invites', '/locations', '/push', '/notifications', '/avatars', '/i/', '/healthz'];
 
+const WEB_EXTENSIONS = ['.web.tsx', '.web.ts', '.web.jsx', '.web.js', '.tsx', '.ts', '.jsx', '.js'];
+
 export default defineConfig(({mode}) => ({
   plugins: [react({include: /\.(jsx|js|tsx|ts)$/})],
   server: {
@@ -35,7 +37,14 @@ export default defineConfig(({mode}) => ({
       // Flow-syntax-only package react-native-svg pulls in even on web.
       '@react-native/assets-registry/registry': path.resolve(__dirname, 'src/stubs/assetsRegistryWebStub.ts'),
     },
-    extensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js', '.tsx', '.ts', '.jsx', '.js'],
+    extensions: WEB_EXTENSIONS,
+  },
+  optimizeDeps: {
+    // The dev server pre-bundles dependencies with esbuild, which resolves
+    // imports inside them by its own extension list: without this,
+    // expo-modules-core gets its native polyfill instead of index.web.ts,
+    // globalThis.expo is never set, and expo-image-picker throws on load.
+    esbuildOptions: {resolveExtensions: WEB_EXTENSIONS},
   },
   define: {
     // react-native-web checks this at runtime.

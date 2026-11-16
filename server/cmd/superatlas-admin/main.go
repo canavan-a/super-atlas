@@ -1,9 +1,11 @@
-// Command superatlas-admin manages who's allowed to sign in. Only emails on
-// the allowlist get a sign-in code, so nobody else can make an account.
+// Command superatlas-admin manages the cap on accounts. Anyone can sign up
+// until there are that many (150 to start); after that only people who
+// already have an account can sign in.
 //
-//	superatlas-admin allow <email>...   let these emails sign in
-//	superatlas-admin remove <email>     take one off and sign it out everywhere
-//	superatlas-admin list               everyone allowed, and who's signed up
+//	superatlas-admin cap              how many accounts there are, and the cap
+//	superatlas-admin cap <n>          set the cap (raise it to let more in)
+//	superatlas-admin list             everyone with an account, oldest first
+//	superatlas-admin remove <email>   delete that account and all its data
 //
 // It works on the database the server uses (SUPERATLAS_DB_PATH or
 // SUPERATLAS_DATA_DIR, as for the server), and changes apply immediately.
@@ -11,10 +13,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 
 	"github.com/canavan-a/super-atlas/server/internal/auth"
 	"github.com/canavan-a/super-atlas/server/internal/config"
@@ -44,55 +47,70 @@ func main() {
 
 	args := os.Args[2:]
 	switch os.Args[1] {
-	case "allow":
-		if len(args) == 0 {
-			usage()
-		}
-		for _, arg := range args {
-			email := auth.NormalizeEmail(arg)
-			if !strings.Contains(email, "@") {
-				fail(fmt.Errorf("%q isn't an email", arg))
+	case "cap":
+		switch len(args) {
+		case 0:
+		case 1:
+			n, err := strconv.Atoi(args[0])
+			if err != nil || n < 0 {
+				fail(fmt.Errorf("%q isn't a number of accounts", args[0]))
 			}
-			if err := store.Allow(ctx, email); err != nil {
+			if err := store.SetUserCap(ctx, n); err != nil {
 				fail(err)
 			}
-			fmt.Println("allowed", email)
+		default:
+			usage()
+		}
+		count, err := store.CountUsers(ctx)
+		if err != nil {
+			fail(err)
+		}
+		limit, err := store.UserCap(ctx)
+		if err != nil {
+			fail(err)
+		}
+		fmt.Printf("%d of %d accounts", count, limit)
+		if count >= limit {
+			fmt.Print(" (full: nobody new can sign up)")
+		}
+		fmt.Println()
+	case "list":
+		if len(args) != 0 {
+			usage()
+		}
+		users, err := store.ListUsers(ctx)
+		if err != nil {
+			fail(err)
+		}
+		if len(users) == 0 {
+			fmt.Println("nobody has signed up yet")
+		}
+		for _, u := range users {
+			fmt.Printf("%s\t%s\t%s\n", u.CreatedAt.Format("2006-01-02"), u.Email, u.DisplayName)
 		}
 	case "remove":
 		if len(args) != 1 {
 			usage()
 		}
 		email := auth.NormalizeEmail(args[0])
-		listed, err := store.Disallow(ctx, email)
+		user, err := store.GetUserByEmail(ctx, email)
+		if errors.Is(err, auth.ErrNotFound) {
+			fail(fmt.Errorf("%s has no account", email))
+		}
 		if err != nil {
 			fail(err)
 		}
-		if !listed {
-			fail(fmt.Errorf("%s isn't on the allowlist", email))
-		}
-		fmt.Println("removed", email, "(signed out everywhere; their account is kept, allow them again to restore it)")
-	case "list":
-		allowed, err := store.ListAllowed(ctx)
-		if err != nil {
+		if err := store.DeleteUser(ctx, user.ID); err != nil {
 			fail(err)
 		}
-		if len(allowed) == 0 {
-			fmt.Println("nobody is allowed yet: superatlas-admin allow <email>")
-		}
-		for _, a := range allowed {
-			if a.DisplayName != "" {
-				fmt.Printf("%s\t%s\n", a.Email, a.DisplayName)
-			} else {
-				fmt.Printf("%s\t(hasn't signed up)\n", a.Email)
-			}
-		}
+		fmt.Println("deleted", email, "(signed out everywhere, friends and location gone; they can sign up again while there's room)")
 	default:
 		usage()
 	}
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: superatlas-admin allow <email>... | remove <email> | list")
+	fmt.Fprintln(os.Stderr, "usage: superatlas-admin cap [<n>] | list | remove <email>")
 	os.Exit(2)
 }
 

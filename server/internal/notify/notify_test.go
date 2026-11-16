@@ -16,6 +16,8 @@ import (
 
 type nopMailer struct{ code string }
 
+func (m *nopMailer) SendSignupAlert(string, *auth.User, int, int) error { return nil }
+
 func (m *nopMailer) SendLoginCode(_, code string) error {
 	m.code = code
 	return nil
@@ -26,9 +28,6 @@ func TestPushTokenGoesWithItsSession(t *testing.T) {
 	conn := testdb.Open(t)
 	mailer := &nopMailer{}
 	authStore := auth.NewStore(conn)
-	if err := authStore.Allow(ctx, "ada@example.com"); err != nil {
-		t.Fatal(err)
-	}
 	authSvc := auth.NewService(authStore, mailer)
 	if err := authSvc.RequestCode(ctx, "ada@example.com"); err != nil {
 		t.Fatal(err)
@@ -63,9 +62,6 @@ func TestNotifyReachesTheStream(t *testing.T) {
 	conn := testdb.Open(t)
 	mailer := &nopMailer{}
 	authStore := auth.NewStore(conn)
-	if err := authStore.Allow(ctx, "ada@example.com"); err != nil {
-		t.Fatal(err)
-	}
 	authSvc := auth.NewService(authStore, mailer)
 	_ = authSvc.RequestCode(ctx, "ada@example.com")
 	user, token, err := authSvc.Verify(ctx, "ada@example.com", mailer.code, "Ada")

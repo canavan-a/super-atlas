@@ -17,7 +17,7 @@ var (
 	ErrInvalidCode    = errors.New("invalid or expired code")
 	ErrNeedsName      = errors.New("display name required for a new account")
 	ErrInvalidSession = errors.New("invalid or expired session")
-	ErrNotAllowed     = errors.New("email isn't on the allowlist")
+	ErrFull           = errors.New("the user cap is reached")
 	ErrTooManyCodes   = errors.New("too many sign-in codes sent")
 )
 
@@ -35,9 +35,11 @@ const (
 	codesPerHour = 100
 )
 
-// Mailer sends the sign-in code out of band; satisfied by mail.Sender.
+// Mailer sends the sign-in code out of band, and the new-account alert;
+// satisfied by mail.Sender.
 type Mailer interface {
 	SendLoginCode(to, code string) error
+	SendSignupAlert(to string, user *User, count, cap int) error
 }
 
 type Service struct {
@@ -48,6 +50,9 @@ type Service struct {
 	// The app store review account (SetReviewAccount): empty when off.
 	reviewEmail string
 	reviewCode  string
+	// alertEmail hears about every new account (SetSignupAlert): empty
+	// when off.
+	alertEmail string
 }
 
 func NewService(store *Store, mailer Mailer) *Service {
@@ -55,14 +60,19 @@ func NewService(store *Store, mailer Mailer) *Service {
 }
 
 // SetReviewAccount turns on a sign-in for app store reviewers: email always
-// signs in with the fixed code, nothing is emailed, and it's allowed without
-// being on the allowlist. Otherwise it's an ordinary account (friends can add
-// it). Empty email or code leaves it off.
+// signs in with the fixed code, nothing is emailed, and it can sign up even
+// when the user cap is reached. Otherwise it's an ordinary account (friends
+// can add it). Empty email or code leaves it off.
 func (s *Service) SetReviewAccount(email, code string) {
 	if email = NormalizeEmail(email); email == "" || code == "" {
 		return
 	}
 	s.reviewEmail, s.reviewCode = email, code
+}
+
+// SetSignupAlert emails to whenever someone makes an account. Empty: off.
+func (s *Service) SetSignupAlert(to string) {
+	s.alertEmail = strings.TrimSpace(to)
 }
 
 func (s *Service) isReviewAccount(email string) bool {
@@ -73,15 +83,19 @@ func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
-// RequestCode emails a fresh 6-digit code to email, if email is on the
-// allowlist (ErrNotAllowed otherwise, and nothing is sent). It behaves the
-// same whether or not an account exists, since the same code also signs up.
+// RequestCode emails a fresh 6-digit code to email. Anyone with an account
+// gets one; anyone else only while there are fewer accounts than the user cap
+// (ErrFull otherwise, and nothing is sent), since the same code signs up.
 func (s *Service) RequestCode(ctx context.Context, email string) error {
 	email = NormalizeEmail(email)
 	if !strings.Contains(email, "@") || len(email) > 254 {
 		return ErrInvalidEmail
 	}
-	if err := s.checkAllowed(ctx, email); err != nil {
+	if _, err := s.store.GetUserByEmail(ctx, email); errors.Is(err, ErrNotFound) {
+		if err := s.checkRoom(ctx, email); err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
 	if s.isReviewAccount(email) {
@@ -108,11 +122,6 @@ func (s *Service) RequestCode(ctx context.Context, email string) error {
 func (s *Service) Verify(ctx context.Context, email, code, displayName string) (*User, string, error) {
 	email = NormalizeEmail(email)
 	displayName = strings.TrimSpace(displayName)
-	// Someone taken off the allowlist can't use a code they already had.
-	if err := s.checkAllowed(ctx, email); err != nil {
-		return nil, "", err
-	}
-
 	// The review account has no stored code to check or use up.
 	var lc *LoginCode
 	if s.isReviewAccount(email) {
@@ -141,10 +150,18 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 
 	user, err := s.store.GetUserByEmail(ctx, email)
 	if errors.Is(err, ErrNotFound) {
+		// The last place may have gone since the code was sent.
+		if err := s.checkRoom(ctx, email); err != nil {
+			return nil, "", err
+		}
 		if displayName == "" {
 			return nil, "", ErrNeedsName
 		}
-		user, err = s.createUser(ctx, email, displayName)
+		var created bool
+		user, created, err = s.createUser(ctx, email, displayName)
+		if err == nil && created {
+			s.alertSignup(ctx, user)
+		}
 	}
 	if err != nil {
 		return nil, "", err
@@ -162,31 +179,62 @@ func (s *Service) Verify(ctx context.Context, email, code, displayName string) (
 	return user, token, nil
 }
 
-func (s *Service) checkAllowed(ctx context.Context, email string) error {
+// checkRoom returns ErrFull if email (which has no account) can't make one
+// because the user cap is reached.
+func (s *Service) checkRoom(ctx context.Context, email string) error {
 	if s.isReviewAccount(email) {
 		return nil
 	}
-	ok, err := s.store.IsAllowed(ctx, email)
+	n, err := s.store.CountUsers(ctx)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return ErrNotAllowed
+	limit, err := s.store.UserCap(ctx)
+	if err != nil {
+		return err
+	}
+	if n >= limit {
+		return ErrFull
 	}
 	return nil
 }
 
-func (s *Service) createUser(ctx context.Context, email, displayName string) (*User, error) {
+// createUser makes the account, reporting whether this call made it.
+func (s *Service) createUser(ctx context.Context, email, displayName string) (*User, bool, error) {
 	id := uuid.NewString()
 	if err := s.store.CreateUser(ctx, id, email, displayName); err != nil {
 		// Two verifies for the same new email racing: the loser's insert
 		// hits the UNIQUE constraint, and the winner's account is the one.
 		if u, getErr := s.store.GetUserByEmail(ctx, email); getErr == nil {
-			return u, nil
+			return u, false, nil
 		}
-		return nil, err
+		return nil, false, err
 	}
-	return s.store.GetUserByID(ctx, id)
+	u, err := s.store.GetUserByID(ctx, id)
+	return u, err == nil, err
+}
+
+// alertSignup tells the alert email about user's new account, in the
+// background so a slow mail server doesn't hold up their sign-in.
+func (s *Service) alertSignup(ctx context.Context, user *User) {
+	if s.alertEmail == "" {
+		return
+	}
+	count, err := s.store.CountUsers(ctx)
+	if err != nil {
+		log.Printf("signup alert: %v", err)
+		return
+	}
+	limit, err := s.store.UserCap(ctx)
+	if err != nil {
+		log.Printf("signup alert: %v", err)
+		return
+	}
+	go func() {
+		if err := s.mailer.SendSignupAlert(s.alertEmail, user, count, limit); err != nil {
+			log.Printf("signup alert for %s: %v", user.Email, err)
+		}
+	}()
 }
 
 func (s *Service) createSession(ctx context.Context, userID string) (string, error) {
