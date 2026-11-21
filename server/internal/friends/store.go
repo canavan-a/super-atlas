@@ -42,6 +42,8 @@ type FriendView struct {
 	// GhostMode: this friend hides from everyone (only said of accepted
 	// friends).
 	GhostMode bool `json:"ghostMode"`
+	// HiddenOnMap: the caller has hidden this friend from their own map.
+	HiddenOnMap bool `json:"hiddenOnMap"`
 }
 
 type Store struct {
@@ -101,6 +103,17 @@ func (s *Store) Accept(ctx context.Context, id string) error {
 	return nil
 }
 
+// SetHidden sets whether userID hides the other side of friendship id from
+// their own map.
+func (s *Store) SetHidden(ctx context.Context, id, userID string, hidden bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE friendships SET
+			requester_hides = CASE WHEN requester_id = ? THEN ? ELSE requester_hides END,
+			addressee_hides = CASE WHEN addressee_id = ? THEN ? ELSE addressee_hides END
+		WHERE id = ?`, userID, hidden, userID, hidden, id)
+	return err
+}
+
 func (s *Store) Delete(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM friendships WHERE id = ?`, id)
 	return err
@@ -110,7 +123,9 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 // joined with the other party's public info.
 func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT f.id, f.addressee_id, f.status, u.id, u.display_name, COALESCE(a.id, ''),
+		SELECT f.id, f.addressee_id, f.status,
+		       CASE WHEN f.requester_id = ? THEN f.requester_hides ELSE f.addressee_hides END,
+		       u.id, u.display_name, COALESCE(a.id, ''),
 		       COALESCE(us.sharing_paused, 0), l.recorded_at, l.latitude, l.longitude, l.speed_mps, l.here_since
 		FROM friendships f
 		JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id ELSE f.requester_id END
@@ -119,7 +134,7 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 		LEFT JOIN avatars a ON a.user_id = u.id
 		WHERE f.requester_id = ? OR f.addressee_id = ?
 		ORDER BY u.display_name COLLATE NOCASE
-	`, userID, userID, userID)
+	`, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +147,7 @@ func (s *Store) ListForUser(ctx context.Context, userID string) ([]FriendView, e
 		var lastSeen, hereSince sql.NullString
 		var lat, lng, speed sql.NullFloat64
 		var v FriendView
-		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.FriendID, &v.DisplayName, &v.AvatarID,
+		if err := rows.Scan(&v.FriendshipID, &addresseeID, &v.Status, &v.HiddenOnMap, &v.FriendID, &v.DisplayName, &v.AvatarID,
 			&ghost, &lastSeen, &lat, &lng, &speed, &hereSince); err != nil {
 			return nil, err
 		}

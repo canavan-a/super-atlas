@@ -2,6 +2,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  EyeOff,
   Focus,
   Ghost,
   LocateFixed,
@@ -28,6 +29,7 @@ export type IconName =
   | 'share'
   | 'check'
   | 'ghost'
+  | 'hidden'
   | 'mail'
   | 'pin'
   | 'refresh';
@@ -43,6 +45,7 @@ const ICONS: Record<IconName, LucideIcon> = {
   share: Share2,
   check: Check,
   ghost: Ghost,
+  hidden: EyeOff,
   mail: Mail,
   pin: MapPin,
   refresh: RefreshCw,

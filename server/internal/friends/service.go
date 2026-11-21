@@ -138,6 +138,22 @@ func (s *Service) Remove(ctx context.Context, friendshipID, userID string) error
 	return s.store.Delete(ctx, friendshipID)
 }
 
+// SetHidden takes the other side of an accepted friendship off (or puts them
+// back on) userID's map. They stay friends and nothing tells them.
+func (s *Service) SetHidden(ctx context.Context, friendshipID, userID string, hidden bool) error {
+	f, err := s.store.GetByID(ctx, friendshipID)
+	if err != nil {
+		return err
+	}
+	if f.RequesterID != userID && f.AddresseeID != userID {
+		return ErrNotYourRequest
+	}
+	if f.Status != "accepted" {
+		return ErrNotFound
+	}
+	return s.store.SetHidden(ctx, friendshipID, userID, hidden)
+}
+
 func (s *Service) List(ctx context.Context, userID string) ([]FriendView, error) {
 	return s.store.ListForUser(ctx, userID)
 }

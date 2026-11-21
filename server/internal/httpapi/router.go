@@ -92,6 +92,8 @@ func NewRouter(d Deps) http.Handler {
 			r.With(limitUser(10, time.Hour)).Post("/invite/reset", d.FriendHandlers.ResetInvite)
 			r.Post("/{id}/accept", d.FriendHandlers.Accept)
 			r.Delete("/{id}", d.FriendHandlers.Remove)
+			r.Put("/{id}/hidden", d.FriendHandlers.Hide)
+			r.Delete("/{id}/hidden", d.FriendHandlers.Unhide)
 		})
 		r.With(limit(30, 10*time.Minute), limitUser(30, time.Hour)).Post("/invites/{code}/accept", d.FriendHandlers.AcceptInvite)
 

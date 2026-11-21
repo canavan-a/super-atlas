@@ -157,7 +157,11 @@ export default function FriendsScreen() {
               <Text style={styles.rowTitle}>{item.displayName}</Text>
               <FriendStatusText friend={item} now={now} style={styles.rowMeta} />
             </View>
-            {item.lastSeenAt && (
+            {item.hiddenOnMap ? (
+              <View style={styles.mapButton} accessibilityLabel={`${item.displayName} is hidden from your map`}>
+                <Icon name="hidden" color={theme.textMuted} size={20} />
+              </View>
+            ) : item.lastSeenAt && (
               <Pressable
                 style={styles.mapButton}
                 onPress={() => navigation.navigate('Map', { focusId: item.friendId })}

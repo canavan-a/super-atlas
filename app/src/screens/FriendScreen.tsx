@@ -1,6 +1,6 @@
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { apiJson } from '../api/client';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
@@ -13,7 +13,8 @@ import { timeAgo } from '../time';
 
 // One friend, opened from the friends list or their card on the map: where
 // they're at (moving and how fast, or how long they've been at this spot),
-// whether they're in ghost mode, showing them on the map, and removing them.
+// whether they're in ghost mode, showing them on the map, hiding them from
+// your map (still friends, just not drawn), and removing them.
 // Refreshes every few seconds while open.
 export default function FriendScreen() {
   const theme = useTheme();
@@ -23,6 +24,7 @@ export default function FriendScreen() {
   const { friends, reload } = useFriends(5000);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [hiddenOverride, setHiddenOverride] = useState<boolean | null>(null);
   const friend = friends?.find((f) => f.friendId === friendId);
 
   useEffect(() => {
@@ -69,6 +71,15 @@ export default function FriendScreen() {
     );
   };
 
+  // Flip the switch right away; the reload after the request settles it.
+  const setHidden = (hidden: boolean) => {
+    setHiddenOverride(hidden);
+    act(`/friends/${friend.friendshipId}/hidden`, hidden ? 'PUT' : 'DELETE').finally(() =>
+      setHiddenOverride(null)
+    );
+  };
+  const hidden = hiddenOverride ?? friend.hiddenOnMap;
+
   const visible = accepted && !friend.ghostMode && friend.lastSeenAt;
   const where = visible ? { recordedAt: friend.lastSeenAt!, speedMps: friend.speedMps, hereSince: friend.hereSince } : null;
 
@@ -99,7 +110,25 @@ export default function FriendScreen() {
         </Card>
       )}
 
-      {visible && (
+      {accepted && (
+        <Card style={styles.note}>
+          <Icon name="hidden" color={hidden ? theme.primary : theme.textMuted} size={22} />
+          <View style={styles.flex}>
+            <Text style={styles.noteText}>Show on my map</Text>
+            <Text style={styles.noteMeta}>
+              {hidden ? `${name} is hidden from your map. You're still friends.` : `Turn off to hide ${name} from your map.`}
+            </Text>
+          </View>
+          <Switch
+            value={!hidden}
+            onValueChange={(on) => setHidden(!on)}
+            trackColor={{ true: theme.primary, false: theme.border }}
+            thumbColor={theme.surfaceAlt}
+          />
+        </Card>
+      )}
+
+      {visible && !hidden && (
         <Button
           label="Show on map"
           onPress={() => navigation.navigate('Map', { focusId: friend.friendId })}
@@ -159,6 +188,7 @@ const makeStyles = (theme: Theme) =>
     detailValue: { color: theme.text, fontSize: 15, fontWeight: '600' },
     note: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
     noteText: { color: theme.text, fontSize: 15 },
+    noteMeta: { color: theme.textMuted, fontSize: 13, marginTop: 2 },
     button: { marginTop: 12 },
     error: { color: theme.danger, marginTop: 12, textAlign: 'center' },
   });

@@ -18,6 +18,8 @@ export type Friend = {
   hereSince?: string;
   // They hide from everyone (only said of accepted friends).
   ghostMode: boolean;
+  // You've hidden them from your own map: still friends, just not drawn.
+  hiddenOnMap: boolean;
 };
 
 // The friends list, reloaded whenever the screen using it comes into focus

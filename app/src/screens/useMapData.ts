@@ -24,13 +24,18 @@ export function useMapData() {
     return () => clearInterval(t);
   }, []);
 
-  // Friends you may see: accepted and not in ghost mode. The server already
-  // holds ghosts back; this also drops anyone the stream showed before they
-  // went dark.
+  // Friends you may see: accepted, not in ghost mode and not hidden from your
+  // map. The server already holds ghosts back; this also drops anyone the
+  // stream showed before they went dark, and anyone you've hidden (the
+  // stream still sends them).
   const acceptedIds = useMemo(
     () =>
       friends
-        ? new Set(friends.filter((f) => f.status === 'accepted' && !f.ghostMode).map((f) => f.friendId))
+        ? new Set(
+            friends
+              .filter((f) => f.status === 'accepted' && !f.ghostMode && !f.hiddenOnMap)
+              .map((f) => f.friendId)
+          )
         : null,
     [friends]
   );

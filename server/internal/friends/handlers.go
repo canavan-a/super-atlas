@@ -107,6 +107,19 @@ func (h *Handlers) Remove(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// Hide and Unhide take a friend off, or put them back on, the caller's map.
+func (h *Handlers) Hide(w http.ResponseWriter, r *http.Request)   { h.setHidden(w, r, true) }
+func (h *Handlers) Unhide(w http.ResponseWriter, r *http.Request) { h.setHidden(w, r, false) }
+
+func (h *Handlers) setHidden(w http.ResponseWriter, r *http.Request, hidden bool) {
+	userID, _ := auth.UserIDFromContext(r.Context())
+	if err := h.service.SetHidden(r.Context(), chi.URLParam(r, "id"), userID, hidden); err != nil {
+		handleActionErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 type inviteResponse struct {
 	Code string `json:"code"`
 	URL  string `json:"url"`
