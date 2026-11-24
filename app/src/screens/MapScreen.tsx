@@ -36,7 +36,7 @@ type Follow = 'me' | string | null;
 // slide to new positions rather than jumping. People whose markers would
 // overlap share one group marker (map/cluster.ts): their faces side by side,
 // "+N" past three. Tapping it zooms in until they come apart, or, if they're
-// too close for that, lists them in a card.
+// too close for that, zooms in to street level and lists them in a card.
 // (MapScreen.web.tsx is the browser's version.)
 export default function MapScreen() {
   const theme = useTheme();
@@ -183,7 +183,8 @@ export default function MapScreen() {
   };
 
   // A group: zoom in just far enough that everyone in it stands alone, or,
-  // when that's closer than street level, list them instead.
+  // when that's closer than street level, zoom in to street level and list
+  // them.
   const onGroupPress = (c: Cluster<MapPerson>) => {
     setFitted(false);
     setFollow(null);
@@ -193,7 +194,7 @@ export default function MapScreen() {
       cameraRef.current?.easeTo({ center: c.lngLat, zoom: c.splitZoom + 0.3, duration: 600 });
     } else {
       setGroupIds(c.members.map((p) => p.id));
-      cameraRef.current?.easeTo({ center: c.lngLat, duration: 600 });
+      cameraRef.current?.easeTo({ center: c.lngLat, zoom: Math.max(zoom.current, MAX_SPLIT_ZOOM), duration: 600 });
     }
   };
 

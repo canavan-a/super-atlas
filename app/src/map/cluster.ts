@@ -5,7 +5,8 @@ import type { LngLat } from './glide';
 // this is "touching, with a little room".
 export const CLUSTER_PX = 44;
 // Tapping a group zooms in until it comes apart, unless that would mean going
-// in past this (people in the same building): then it lists them instead.
+// in past this (people in the same building): then it zooms in to this and
+// lists them.
 export const MAX_SPLIT_ZOOM = 18;
 // MapLibre's world is 512px wide at zoom 0.
 const TILE_PX = 512;

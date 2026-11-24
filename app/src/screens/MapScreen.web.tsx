@@ -109,7 +109,8 @@ export default function MapScreen() {
   };
 
   // A group: zoom in just far enough that everyone in it stands alone, or,
-  // when that's closer than street level, list them instead (as Android).
+  // when that's closer than street level, zoom in to street level and list
+  // them (as Android).
   const openGroup = (c: Cluster<FriendLocation>) => {
     const m = map.current;
     if (!m) return;
@@ -120,7 +121,7 @@ export default function MapScreen() {
       m.easeTo({ center: c.lngLat, zoom: c.splitZoom + 0.3, duration: 600 });
     } else {
       setGroupIds(c.members.map((l) => l.userId));
-      m.easeTo({ center: c.lngLat, duration: 600 });
+      m.easeTo({ center: c.lngLat, zoom: Math.max(m.getZoom(), MAX_SPLIT_ZOOM), duration: 600 });
     }
   };
 
